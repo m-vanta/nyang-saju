@@ -20,10 +20,12 @@
     gender: '여성',
     calendar: 'solar',
     focus: 'love',
-    payMethod: 'kakaopay',
     reading: null,
     input: null,
-    paid: false,
+    paid: null,
+    paidToken: null,
+    paidOrder: null,
+    teaser: null,
     canvasReady: false,
     shareReady: false,
     friends: [],
@@ -33,8 +35,6 @@
     shareInvite: false,
     inputStarted: false
   };
-
-  var PAY_LABEL = { kakaopay: '카카오페이', tosspay: '토스페이', card: '신용카드' };
 
   /* --- 물상(物象) 아이콘 · 일러스트 매핑 -------------------------------- */
 
@@ -82,7 +82,42 @@
     state.friends = loadFriends();
     parseInvite();
     renderValueList();
+    bindLegal();
     trackPageView();
+    handlePayReturn();
+  }
+
+  /* 페이앱 결제 후 returnurl(?orderId=)로 돌아왔을 때 */
+  function handlePayReturn() {
+    var q = null;
+    try { q = new URLSearchParams(location.search); } catch (e) { q = null; }
+    var orderId = q && q.get('orderId');
+    if (!orderId) return;
+    try { history.replaceState({}, '', location.pathname); } catch (e) { }
+    pollOrder(orderId, 40);
+  }
+
+  /* 판매자 정보 · 환불 · 개인정보 안내 (전자상거래 고지) */
+  function bindLegal() {
+    function open() {
+      var m = $('#legal-modal');
+      if (!m) return;
+      m.classList.add('is-open');
+      m.setAttribute('aria-hidden', 'false');
+    }
+    function close() {
+      var m = $('#legal-modal');
+      if (!m) return;
+      m.classList.remove('is-open');
+      m.setAttribute('aria-hidden', 'true');
+    }
+    $$('[data-legal-open]').forEach(function (el) {
+      el.addEventListener('click', function (e) { e.preventDefault(); open(); });
+    });
+    $$('[data-close-legal]').forEach(function (el) { el.addEventListener('click', close); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    var link = $('#pay-refund-link');
+    if (link) link.textContent = C.PAY.legalLink;
   }
 
   function trackPageView() {
@@ -434,10 +469,13 @@
     }
     state.reading = r;
     state.input = input;
-    state.paid = false;
+    state.paid = null;
+    state.paidToken = null;
+    state.teaser = null;
     state.selectedFriend = null;
     renderFree(r, input);
     show('screen-free');
+    loadTeaser(input);
 
     AN.track('free_result_view', {
       dayMaster: r.dayMaster.short,
@@ -468,11 +506,14 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 3-1. 천기 조립 — 만세력 결과 + 팔자 고양이 + copy.js               */
-  /* ------------------------------------------------------------------ */
+  /* 3-1. 무료 천기 조립 — 만세력 + 팔자 고양이                          */
+  /* ------------------------------------------------------------------
+     유료 본문(세 가지 운·패턴·팩폭 심층·부적 문구)은 여기서 만들지 않는다.
+     그 문장은 서버(Worker)에만 있고, 결제 후 /api/reading 으로만 내려온다.
+     여기서 만드는 것은 무료 화면이 쓰는 값 + 서버 응답을 그릴 틀뿐이다. */
 
   function buildReading(chart, input) {
-    var m = C.MASTER[chart.dayMaster];
+    var pub = C.MASTER[chart.dayMaster] || {};
     var focusKey = C.FOCUS[input.focus] ? input.focus : 'love';
     var elemKo = STEM_ELEM[chart.dayMaster];
     var dmName = S.STEMS[chart.dayMaster] + elemKo;
@@ -484,7 +525,7 @@
       name: name,
       callName: name === '손님' ? '손님' : name + ' 님',
       chart: chart,
-      master: m,
+      masterScene: pub.scene || '',
       focusKey: focusKey,
       focus: C.FOCUS[focusKey],
       dayMaster: { name: dmName + '(' + dmHanja + ')', short: dmName, hanja: dmHanja, elem: elemKo },
@@ -494,100 +535,39 @@
 
     r.palja = P.build(chart, name);
     r.palja.pct = chart.strongest.pct;
-    r.themes = themeSections(r);
-    r.patterns = buildPatterns(r);
-    r.summary = buildSummary(r);
     return r;
   }
 
-  /* --- 유료 : 세 가지 운 (고른 운세부터) ----------------------------- */
+  /* --- 무료 : 연애·재물·직업운 미리보기 ------------------------------
+     서버가 준 티저(state.teaser)가 있으면 그것을, 없으면 안내문을 쓴다. */
 
-  function themeSections(r) {
-    var out = [];
-    var order;
-    if (r.focusKey === 'year') {
-      out.push({
-        key: 'year',
-        title: '올해 총운',
-        term: '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count +
-          '개(' + r.palja.pct + '%)',
-        body: fill(r.master.focus.year, r.name),
-        why: r.timingText || ''
-      });
-      order = ['love', 'money', 'work'];
-    } else {
-      order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
-      order.unshift(r.focusKey);
-    }
-    order.forEach(function (k) {
-      var T = C.THEME[k];
-      var body = fill(r.master.focus[k], r.name) + ' ' +
-        fillv(T.elem[r.palja.rel], r) + ' ' + fillv(T.god[r.palja.group], r);
-      out.push({
-        key: k,
-        title: T.label,
-        kicker: T.kicker,
-        term: r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count + '개(' +
-          r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount,
-        body: body
-      });
-    });
-    return out;
-  }
-
-  /* --- 유료 : 반복되는 인생 패턴 3개 --------------------------------- */
-
-  function buildPatterns(r) {
-    var out = [];
-    function add(pt) {
-      if (!pt) return;
-      out.push({ label: pt.label, text: fillv(pt.text, r), cut: fillv(pt.cut, r) });
-    }
-    add(C.PATTERN.god[r.palja.group]);
-    add(C.PATTERN.elem[r.palja.rel]);
-    add(r.chart.lacking.length ? C.PATTERN.lack : C.PATTERN.solid);
-    return out.slice(0, 3);
-  }
-
-  /* --- 무료 : 연애·재물·직업운 미리보기 (1~2줄) ---------------------- */
-
-  function previewItems(r) {
+  function previewList() {
+    if (state.teaser && state.teaser.length) return state.teaser;
+    var fb = C.FREE.previewFallback || {};
     return ['love', 'money', 'work'].map(function (k) {
-      var T = C.THEME[k];
-      var base = firstSent(fill(r.master.focus[k], r.name), 1);
-      var tail = firstSent(fillv(T.elem[r.palja.rel], r), 1);
-      return { key: k, label: T.label, text: clip(base + ' ' + tail, 96) };
+      return { key: k, label: C.FOCUS[k].label, text: fb[k] || '' };
     });
   }
 
-  // 결과 요약 복사 — 단톡방에 붙여도 도사의 말투가 남게
-  function buildSummary(r) {
-    var p = r.chart.pillars;
-    var m = r.master;
-    var line = function (pl) { return pl ? pl.ko + '(' + pl.hanja + ')' : '시주 모름'; };
-    var L = [];
-    L.push('냥도사의 천기누설 — ' + r.name);
-    L.push('팔자 고양이: ' + r.palja.name + ' (' + r.palja.hanja + ' · ' + r.palja.short + ')');
-    L.push('한 줄 정의: ' + r.palja.def);
-    L.push('사주명식: ' + line(p.year) + ' · ' + line(p.month) + ' · ' + line(p.day) + ' · ' + line(p.hour));
-    L.push('오행: ' + r.chart.dist.map(function (d) { return d.elem + d.count + '개(' + d.pct + '%)'; }).join(' '));
-    L.push('');
-    L.push(fill(r.palja.bomb, r.name));
-    L.push('');
-    r.themes.forEach(function (t) {
-      L.push('[' + t.title + ']');
-      L.push(fill(t.body, r.name));
-      L.push('');
-    });
-    L.push('[반복되는 인생 패턴]');
-    r.patterns.forEach(function (pt) {
-      L.push('· ' + pt.label + ': ' + fill(pt.text, r.name) + ' → ' + fill(pt.cut, r.name));
-    });
-    L.push('');
-    L.push('· ' + C.ui.result.talismanTitle + ': ' + fill(m.talisman, r.name));
-    L.push('');
-    L.push('냥도사가 봤어요. 재미로 보세요.');
-    return tidy(L.join('\n'));
+  function renderPreviewList() {
+    var box = $('#preview-list');
+    if (!box) return;
+    box.innerHTML = previewList().map(function (it) {
+      return '<li class="preview__item">' +
+        '<div class="preview__top"><span class="preview__label">' + esc(it.label) + '</span>' +
+        '<span class="preview__chip">' + C.FREE.lockTag + '</span></div>' +
+        '<p class="preview__text">' + hanjaize(it.text) + '</p></li>';
+    }).join('');
+  }
+
+  /* 서버 티저를 받아 미리보기만 갈아 끼운다 (실패하면 안내문 그대로) */
+  function loadTeaser(input) {
+    if (!payApi()) return;
+    api('POST', '/api/preview', input).then(function (data) {
+      if (!data || !data.preview || !data.preview.length) return;
+      state.teaser = data.preview;
+      if (state.reading && state.input === input) renderPreviewList();
+    }).catch(function () { /* 티저는 없어도 화면이 성립한다 */ });
   }
 
   /* ------------------------------------------------------------------ */
@@ -609,7 +589,7 @@
       img.src = 'public/cat-' + art.slug + '-ink.png';
     };
     img.src = 'public/cat-' + art.slug + '-ink.webp';
-    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.masterScene || art.scene) + ' 콩눈 고양이 그림';
 
     $('#cat-no').textContent = pad(r.chart.dayMaster + 1);
     $('#cat-name').textContent = p.name;
@@ -642,12 +622,7 @@
 
     // 운 미리보기
     $('#preview-sub').textContent = C.FREE.previewSub;
-    $('#preview-list').innerHTML = previewItems(r).map(function (it) {
-      return '<li class="preview__item">' +
-        '<div class="preview__top"><span class="preview__label">' + esc(it.label) + '</span>' +
-        '<span class="preview__chip">' + C.FREE.lockTag + '</span></div>' +
-        '<p class="preview__text">' + hanjaize(it.text) + '</p></li>';
-    }).join('');
+    renderPreviewList();
     $('#preview-lock').textContent = C.FREE.previewMore;
 
     // 1,900원으로 열리는 것
@@ -998,10 +973,13 @@
   /* 5. 유료 화면 렌더                                                   */
   /* ------------------------------------------------------------------ */
 
-  function renderPaid(r, input) {
+  /* 유료 화면은 서버가 준 페이로드(state.paid)로만 그린다.
+     무료 계산값(r)에는 유료 문장이 없다 — 구조·라벨만 여기서 붙인다. */
+  function renderPaid(r, input, paid) {
     var p = r.palja;
     var elem = r.dayMaster.elem;
     var art = ELEM_ART[elem];
+    var T = paid.paid || {};
 
     $('#paid-crumb').textContent = C.PAID.crumb;
     $('#result-call').textContent = fill(C.ui.call.long);
@@ -1015,7 +993,7 @@
       img.src = 'public/cat-' + art.slug + '-ink.png';
     };
     img.src = 'public/cat-' + art.slug + '-ink.webp';
-    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.masterScene || art.scene) + ' 콩눈 고양이 그림';
     $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + p.name;
 
     // 1,900원으로 연 천기 체크리스트
@@ -1027,7 +1005,7 @@
 
     // 본편: 세 가지 운 (고른 운세부터)
     var html = '';
-    r.themes.forEach(function (t, i) {
+    (paid.themes || []).forEach(function (t, i) {
       html += entryHtml(pad(i + 1), {
         title: t.title,
         term: i === 0 ? t.term : '',
@@ -1037,8 +1015,7 @@
     });
     $('#result-sections').innerHTML = html;
 
-    // 팩폭 심층 · 성향 상세
-    var m = r.master;
+    // 팩폭 심층 · 성향 상세 (문장은 서버, 라벨은 무료 사전)
     var bp = C.ui.result.bonus.parts;
     var deep = [
       {
@@ -1046,8 +1023,8 @@
         title: C.PAID.bombTitle,
         parts: [
           { label: bp.me, text: tidy(p.bomb) },
-          { label: bp.blind, text: fill(m.selfBlind, r.name) },
-          { label: bp.first, text: fill(m.firstMet, r.name) }
+          { label: bp.blind, text: T.selfBlind || '' },
+          { label: bp.first, text: T.firstMet || '' }
         ]
       },
       {
@@ -1057,16 +1034,16 @@
         parts: p.traits.map(function (tr) {
           return { label: tr.label, text: tr.text };
         }).concat([
-          { label: bp.closer, text: fill(m.closer, r.name) }
+          { label: bp.closer, text: T.closer || '' }
         ])
       },
       {
         bonus: C.ui.result.bonus.label3,
         title: C.ui.result.bonus.title2,
         parts: [
-          { label: bp.when, text: fill(m.love, r.name) },
-          { label: bp.keep, text: fill(m.keep, r.name) },
-          { label: bp.avoid, text: fill(m.avoidEnergy, r.name), warn: true }
+          { label: bp.when, text: T.love || '' },
+          { label: bp.keep, text: T.keep || '' },
+          { label: bp.avoid, text: T.avoidEnergy || '', warn: true }
         ]
       }
     ];
@@ -1079,11 +1056,11 @@
 
     // 반복되는 인생 패턴
     $('#pattern-sub').textContent = C.PAID.patternSub;
-    $('#pattern-list').innerHTML = r.patterns.map(function (pt, i) {
+    $('#pattern-list').innerHTML = (paid.patterns || []).map(function (pt, i) {
       return '<li class="pattern"><span class="pattern__no">' + pad(i + 1) + '</span>' +
         '<span class="pattern__label">' + esc(pt.label) + '</span>' +
-        '<p class="pattern__text">' + hanjaize(fill(pt.text, r.name)) + '</p>' +
-        '<span class="pattern__cut"><b>' + C.PAID.patternCut + '</b>' + hanjaize(fill(pt.cut, r.name)) + '</span></li>';
+        '<p class="pattern__text">' + hanjaize(pt.text) + '</p>' +
+        '<span class="pattern__cut"><b>' + C.PAID.patternCut + '</b>' + hanjaize(pt.cut) + '</span></li>';
     }).join('');
 
     // 인연 궤도 상세 해석 (무료 화면의 잠금 문구도 같이 풀린다)
@@ -1094,13 +1071,14 @@
     // 오늘의 천기 부적
     $('#result-sections-talis').innerHTML =
       '<div class="entry entry--talis">' +
-        '<p class="entry__text">' + tidy(fill(m.talisman, r.name)) +
-        '<span>' + C.ui.result.talismanAvoid + tidy(fill(m.avoid, r.name)) + '</span></p>' +
+        '<p class="entry__text">' + tidy(T.talisman || '') +
+        '<span>' + C.ui.result.talismanAvoid + tidy(T.avoid || '') + '</span></p>' +
       '</div>';
 
     drawAmulet(r, elem);
     $('#btn-save-card').hidden = false;
     $('#btn-share-card').hidden = !canShareFiles();
+    $('#btn-copy').hidden = !(state.paid && state.paid.summary);
   }
 
   // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 BONUS 배지
@@ -1577,23 +1555,51 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 7. 결제 (미리보기)                                                  */
-  /* ------------------------------------------------------------------ */
+  /* 7. 결제 (페이앱)                                                    */
+  /* ------------------------------------------------------------------
+     설정: index.html 의 window.NYANG_PAY_API 에 Worker 주소를 넣으면 켜진다.
+     비어 있으면 실결제를 시작하지 않고 "연결 전" 안내만 띄운다 (데모 위장 없음).
+
+     흐름
+       ① POST /api/order  → { payUrl }
+       ② payUrl 로 이동 → 페이앱 결제창에서 결제
+       ③ returnurl(?orderId=…) 로 복귀 → /api/order/:id/status 폴링
+       ④ paid + token → GET /api/reading → 유료 화면 렌더 */
+
+  function payApi() {
+    return (window.NYANG_PAY_API || '').replace(/\/+$/, '');
+  }
+
+  function api(method, path, body) {
+    var base = payApi();
+    if (!base) return Promise.reject(new Error('pay_not_configured'));
+    return fetch(base + path, {
+      method: method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'omit',
+      mode: 'cors',
+      cache: 'no-store'
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) {
+          var err = new Error(data.error || ('http_' + res.status));
+          err.status = res.status;
+          err.data = data;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
 
   function bindPayment() {
     $('#btn-unlock').addEventListener('click', function () { openPay('value'); });
     $('#btn-unlock-2').addEventListener('click', function () { openPay('sticky'); });
-    $('#pay-methods').addEventListener('click', function (e) {
-      var btn = e.target.closest('.pay-method');
-      if (!btn) return;
-      $$('.pay-method').forEach(function (b) { b.classList.remove('is-on'); });
-      btn.classList.add('is-on');
-      state.payMethod = btn.getAttribute('data-value');
-    });
     $$('[data-close-modal]').forEach(function (el) {
       el.addEventListener('click', closePay);
     });
-    $('#btn-pay').addEventListener('click', doDemoPay);
+    $('#btn-pay').addEventListener('click', doPay);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closePay();
     });
@@ -1604,15 +1610,33 @@
         '<span class="pay-value__title">' + esc(v.title) + '</span>' +
         '<p class="pay-value__desc">' + esc(v.desc) + '</p></li>';
     }).join('');
-    $('#pay-badge').textContent = C.PAID.demoBadge;
-    $('#pay-note').textContent = C.PAID.demoNote;
-    $('#btn-pay').textContent = C.PAID.demoSubmit;
+    $('#pay-badge').textContent = C.PAY.badge;
+    $('#pay-note').textContent = C.PAY.note;
+    $('#pay-refund').textContent = C.PAY.refund;
+    $('#btn-pay').textContent = C.PAY.submit;
+    $('#value-note').textContent = payApi() ? C.PAY.note : C.PAY.notReady;
+    $('#btn-pay').disabled = !payApi();
   }
 
   function openPay(source) {
+    // 이미 결제한 사주면 결제창을 다시 띄우지 않는다 (중복 결제 방지)
+    var stored = state.input ? findToken(state.input) : null;
+    if (stored) {
+      AN.track('pay_button_click', {
+        source: source || 'value', price: 1900, focus: state.focus, reused: true,
+        cat: state.reading ? state.reading.palja.name : null
+      });
+      openPaid(stored, null, true);
+      return;
+    }
+
     var modal = $('#pay-modal');
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
+    if (!payApi()) {
+      $('#pay-note').textContent = C.PAY.notReady;
+      $('#btn-pay').disabled = true;
+    }
     AN.track('pay_button_click', {
       source: source || 'value',
       price: 1900,
@@ -1629,50 +1653,141 @@
 
   var PAY_LOADING = C.ui.loading.msgs;
 
-  function doDemoPay() {
+  function showLoading(on, msg) {
+    var loading = $('#loading');
+    document.body.classList[on ? 'add' : 'remove']('is-loading');
+    loading.classList[on ? 'add' : 'remove']('is-on');
+    loading.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (msg) $('#loading-text').textContent = msg;
+  }
+
+  function doPay() {
     var btn = $('#btn-pay');
     if (btn.disabled) return;
+    if (!payApi()) { $('#pay-note').textContent = C.PAY.notReady; return; }
+
     btn.disabled = true;
-    btn.textContent = PAY_LABEL[state.payMethod] + ' 연결 중이다';
-
+    btn.textContent = C.PAY.opening;
     closePay();
+    showLoading(true, C.PAY.opening);
 
-    var loading = $('#loading');
-    document.body.classList.add('is-loading');
-    loading.classList.add('is-on');
-    loading.setAttribute('aria-hidden', 'false');
-
-    var i = 0;
-    var textEl = $('#loading-text');
-    textEl.textContent = PAY_LOADING[0];
-    var timer = setInterval(function () {
-      i = (i + 1) % PAY_LOADING.length;
-      textEl.textContent = PAY_LOADING[i];
-    }, 700);
-
-    var orderId = 'NYANG_DEMO_' + Date.now().toString(36).toUpperCase();
-
-    setTimeout(function () {
-      clearInterval(timer);
-      loading.classList.remove('is-on');
-      loading.setAttribute('aria-hidden', 'true');
-      document.body.classList.remove('is-loading');
+    api('POST', '/api/order', state.input).then(function (data) {
+      if (data.status === 'paid' && data.token) {
+        return openPaid(data.token, data.orderId, true);
+      }
+      if (!data.payUrl) throw new Error('no_payurl');
+      rememberPendingOrder(data.orderId);
+      location.href = data.payUrl;
+    }).catch(function (err) {
+      showLoading(false);
       btn.disabled = false;
-      btn.textContent = C.PAID.demoSubmit;
-      state.paid = true;
-      renderPaid(state.reading, state.input);
+      btn.textContent = C.PAY.submit;
+      toast(err && err.message === 'payments_disabled' ? C.PAY.notReady : C.PAY.fail);
+    });
+  }
+
+  /* 복귀·재방문에서 결제 확인 */
+  function pollOrder(orderId, tries) {
+    var left = tries == null ? 40 : tries;
+    showLoading(true, C.PAY.waiting);
+    api('GET', '/api/order/' + encodeURIComponent(orderId) + '/status').then(function (st) {
+      if (st.paid && st.token) return openPaid(st.token, orderId, false);
+      if (left <= 0) {
+        showLoading(false);
+        toast(C.PAY.pending);
+        return;
+      }
+      setTimeout(function () { pollOrder(orderId, left - 1); }, 3000);
+    }).catch(function () {
+      showLoading(false);
+      toast(C.PAY.fail);
+    });
+  }
+
+  /* 결제 확인 → 유료 본문 요청 → 렌더 */
+  function openPaid(token, orderId, fresh) {
+    return api('GET', '/api/reading?token=' + encodeURIComponent(token)).then(function (paid) {
+      if (!state.input && paid.input) {
+        // 페이앱에서 돌아온 직후 — 입력값은 서버가 보관한 것을 그대로 쓴다
+        state.input = paid.input;
+        state.focus = paid.input.focus || state.focus;
+        state.reading = buildReading(S.computePillars(paid.input), paid.input);
+      }
+      state.paid = paid;
+      state.paidToken = token;
+      state.paidOrder = orderId;
+      saveToken(token, paid);
+      renderPaid(state.reading, state.input, paid);
       show('screen-result');
-      toast(C.ui.toast.paid + PAY_LABEL[state.payMethod] + ' 1,900원');
+      showLoading(false);
+      $('#app').scrollTo({ top: 0, behavior: 'smooth' });
+      toast(C.PAY.paid);
       AN.track('payment_complete', {
-        method: PAY_LABEL[state.payMethod],
-        methodKey: state.payMethod,
+        method: 'payapp',
+        methodKey: 'payapp',
         amount: 1900,
         orderId: orderId,
-        demo: true,
-        cat: state.reading.palja.name,
+        demo: false,
+        reused: !!fresh,
+        cat: state.reading ? state.reading.palja.name : null,
         friends: state.friends.length
       });
-    }, 2400);
+      return paid;
+    }).catch(function (err) {
+      showLoading(false);
+      toast(C.PAY.fail);
+      throw err;
+    });
+  }
+
+  /* ---- 토큰 보관: 같은 생년월일로 다시 들어오면 결제 없이 열린다 ---- */
+
+  var TOKEN_KEY = 'nyangsaJu.paid.v1';
+
+  function inputKey(input) {
+    return [input.name, input.gender, input.year, input.month, input.day,
+      input.calendar, input.isLeap ? 1 : 0, input.hourIdx == null ? '-' : input.hourIdx,
+      input.focus].join('|');
+  }
+
+  function readStore() {
+    try {
+      var arr = JSON.parse(localStorage.getItem(TOKEN_KEY) || '[]');
+      return Object.prototype.toString.call(arr) === '[object Array]' ? arr : [];
+    } catch (e) { return []; }
+  }
+
+  function saveToken(token, paid) {
+    try {
+      var list = readStore().filter(function (x) {
+        return x.key !== inputKey(state.input) && x.exp > Date.now();
+      });
+      list.unshift({
+        key: inputKey(state.input),
+        token: token,
+        orderId: paid.orderId,
+        exp: paid.expiresAt || (Date.now() + 30 * 24 * 3600 * 1000)
+      });
+      localStorage.setItem(TOKEN_KEY, JSON.stringify(list.slice(0, 5)));
+    } catch (e) { /* 사생활 보호 모드 등 */ }
+  }
+
+  function findToken(input) {
+    var key = inputKey(input);
+    var hit = readStore().filter(function (x) { return x.key === key && x.exp > Date.now(); })[0];
+    return hit ? hit.token : null;
+  }
+
+  function rememberPendingOrder(orderId) {
+    try { sessionStorage.setItem('nyangsaJu.pending', orderId); } catch (e) { }
+  }
+
+  function takePendingOrder() {
+    try {
+      var v = sessionStorage.getItem('nyangsaJu.pending');
+      sessionStorage.removeItem('nyangsaJu.pending');
+      return v;
+    } catch (e) { return null; }
   }
 
   /* ------------------------------------------------------------------ */
@@ -2081,7 +2196,7 @@
     var ctx = canvas.getContext('2d');
     var art = ELEM_ART[elem] || ELEM_ART['수'];
     var bombText = tidy(fill(r.palja.bomb, r.name));
-    var talisText = tidy(fill(r.master.talisman, r.name));
+    var talisText = tidy((state.paid && state.paid.paid && state.paid.paid.talisman) || '');
 
     var seed = hashStr((r.name || '') + '|' + (state.input ? [state.input.year, state.input.month, state.input.day, state.input.hourIdx].join('-') : ''));
     var rnd = seededRand(seed || 20261124);
@@ -2398,7 +2513,7 @@
 
   function bindResultActions() {
     $('#btn-copy').addEventListener('click', function () {
-      var text = state.reading ? state.reading.summary : '';
+      var text = (state.paid && state.paid.summary) || '';
       copyText(text).then(function () {
         toast(C.ui.toast.copied);
       }).catch(function () {
@@ -2428,18 +2543,18 @@
       canvas.toBlob(function (blob) {
         if (!blob) return;
         var file = new File([blob], C.ui.arumulet.file + '.png', { type: 'image/png' });
-        var payload = { files: [file], title: C.brand.name + ' 부적', text: state.reading.summary };
+        var payload = { files: [file], title: C.brand.name + ' 부적', text: (state.paid && state.paid.summary) || '' };
         if (navigator.canShare(payload)) {
           navigator.share(payload).catch(function () { });
         } else {
-          copyText(state.reading.summary).then(function () { toast(C.ui.toast.shared); });
+          copyText((state.paid && state.paid.summary) || '').then(function () { toast(C.ui.toast.shared); });
         }
       }, 'image/png');
     });
 
     $('#btn-again').addEventListener('click', function () {
       if (!state.reading) return;
-      renderPaid(state.reading, state.input);
+      if (state.paid) renderPaid(state.reading, state.input, state.paid);
       $('#app').scrollTo({ top: 0, behavior: 'smooth' });
       toast(C.ui.toast.again);
     });
