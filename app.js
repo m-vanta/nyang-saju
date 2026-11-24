@@ -2415,27 +2415,40 @@
 
       var link = shareLink();
       var shown = link.replace(/^https?:\/\//, '').replace(/\/$/, '');
-      var linkSize = sq ? 18 : 26, linkLines, maxLink = sq ? 1 : 2;
-      for (; linkSize >= 16; linkSize -= 1) {
+      var maxLink = 2;
+      var maxW = sq ? 878 : 830;
+      var linkSize = sq ? 17 : 26, linkMin = sq ? 11 : 16;
+      var linkLines = null, lh;
+      for (; linkSize >= linkMin; linkSize -= 1) {
         ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
-        linkLines = wrapChars(ctx, shown, sq ? 860 : 830, maxLink);
-        if (linkLines.length <= maxLink) break;
+        var probe = wrapChars(ctx, shown, maxW, 0);
+        if (probe.length <= maxLink) { linkLines = probe; break; }
       }
+      if (!linkLines) {
+        linkSize = linkMin;
+        ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
+        linkLines = wrapChars(ctx, shown, maxW, maxLink);
+      }
+      lh = Math.round(linkSize * 1.4);
       ctx.fillStyle = INK2;
       ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
+      var linkTop = footRule + (sq ? 64 : 112);
       for (i = 0; i < linkLines.length; i++) {
-        ctx.fillText(linkLines[i], W / 2, footRule + (sq ? 66 : 112) + i * Math.round(linkSize * 1.4));
+        ctx.fillText(linkLines[i], W / 2, linkTop + i * lh);
       }
 
+      var infoY = linkTop + (linkLines.length - 1) * lh + (sq ? 32 : 40);
+      if (sq) infoY = Math.min(infoY, H - 128);
       ctx.fillStyle = INK3;
       ctx.font = (sq ? '400 17px ' : '400 23px ') + F_SANS;
       ctx.fillText(
-        state.shareInvite ? r.callName + C.FREE.shareInviteFooter : C.FREE.shareNoInfo,
-        W / 2, sq ? H - 152 : H - 150
+        state.shareInvite ? fill(C.FREE.shareInviteFooter) : C.FREE.shareNoInfo,
+        W / 2, sq ? infoY : H - 150
       );
 
       ctx.fillStyle = 'rgba(30,26,23,0.42)';
-      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, sq ? H - 120 : H - 108, 2, 'center', sq ? 15 : 21, 400);
+      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, sq ? Math.min(infoY + 32, H - 60) : H - 108,
+        2, 'center', sq ? 15 : 21, 400);
 
       state.shareReady = true;
     });
