@@ -116,10 +116,12 @@
     if (!p) return fill(s, (r || {}).name);
     return fill(String(s == null ? '' : s), r.name)
       .replace(/\{strongKo\}/g, p.strongKo)
+      .replace(/\{strongKoJ\}/g, josa(p.strongKo, '이가'))
       .replace(/\{lackKo\}/g, p.lackKo || '')
       .replace(/\{pct\}/g, p.pct != null ? p.pct : (r.chart.strongest.pct))
       .replace(/\{count\}/g, r.chart.strongest.count)
       .replace(/\{god\}/g, p.topGod)
+      .replace(/\{godJ\}/g, josa(p.topGod, '이가'))
       .replace(/\{n\}/g, p.godCount);
   }
 

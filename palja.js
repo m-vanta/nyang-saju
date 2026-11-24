@@ -105,11 +105,13 @@
         .replace(/\{name\} 님/g, call)
         .replace(/\{name\}/g, call)
         .replace(/\{strongKo\}/g, strongKo)
+        .replace(/\{strongKoJ\}/g, josa(strongKo, '이가'))
         .replace(/\{lackKo\}/g, lackKo || '')
         .replace(/\{pct\}/g, strong.pct)
         .replace(/\{count\}/g, strong.count)
         .replace(/\{chars\}/g, chart.total === 6 ? '여섯 글자' : '여덟 글자')
         .replace(/\{god\}/g, top.god)
+        .replace(/\{godJ\}/g, josa(top.god, '이가'))
         .replace(/\{n\}/g, top.n);
     }
 
