@@ -3296,3 +3296,56 @@ body.is-free.is-free-scrolled .sticky-cta { display: flex; animation: ctaUp 0.35
 
 .pay-note { font-size: var(--fs-cap); line-height: 1.55; margin-top: 9px; }
 .pay-foot { margin: 10px -18px 0; padding: 10px 18px 14px; }
+
+/* ------------------------- v2.1 · 무료 8단계 순서 ------------------------- */
+/* 랜딩 안내는 한 곳으로 모으고, 무료 화면은 캐릭터 → 이름·키워드 → 팩폭 →
+   성향 3 → 결과 카드 → 명식·오행 → 미리보기·결제 → 인연 궤도 순으로 읽힌다. */
+
+.catcard__tags { margin-top: 10px; }
+
+/* 결과 카드 비율 선택 (9:16 스토리 · 1:1 카톡) */
+.seg--share { margin: 0 0 12px; height: 42px; }
+.seg--share .seg__btn { font-size: 15px; letter-spacing: 0.01em; }
+
+.share__frame--square { padding: 8px; }
+
+/* 유료 미리보기 — 결제 버튼 위, 구매 전 목차와 함께 */
+.value .preview {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--rule-2);
+}
+
+.preview__title {
+  font-family: var(--serif);
+  font-size: var(--fs-sub);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.preview__sub {
+  font-family: var(--hand);
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+.value__label {
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--red-2);
+  margin: 16px 0 2px;
+}
+
+/* 인연 궤도 — 점수 대신 관계의 결 */
+.orbit__caption-advice {
+  margin-top: 6px !important;
+  padding-top: 6px;
+  border-top: 1px dotted var(--rule-2);
+  color: var(--ink-3) !important;
+  font-size: 13px !important;
+}

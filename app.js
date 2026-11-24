@@ -31,7 +31,9 @@
     invite: null,
     selectedFriend: null,
     shareInvite: false,
-    inputStarted: false
+    shareRatio: 'story',
+    inputStarted: false,
+    inputDone: false
   };
 
   var PAY_LABEL = { kakaopay: '카카오페이', tosspay: '토스페이', card: '신용카드' };
@@ -111,8 +113,8 @@
   /* 팔자 고양이·분포 수치까지 채우는 치환 (유료 운 풀이·패턴에서 씀) */
   function fillv(s, r) {
     var p = (r || state.reading || {}).palja;
-    if (!p) return fill(s);
-    return fill(String(s == null ? '' : s))
+    if (!p) return fill(s, (r || {}).name);
+    return fill(String(s == null ? '' : s), r.name)
       .replace(/\{strongKo\}/g, p.strongKo)
       .replace(/\{lackKo\}/g, p.lackKo || '')
       .replace(/\{pct\}/g, p.pct != null ? p.pct : (r.chart.strongest.pct))
@@ -436,6 +438,20 @@
     state.input = input;
     state.paid = false;
     state.selectedFriend = null;
+
+    // 퍼널 3번: 생년월일·성별·관심운세를 다 채우고 폼을 낸 순간 한 번만
+    if (!state.inputDone) {
+      state.inputDone = true;
+      AN.track('input_complete', {
+        name: !!input.name,
+        gender: input.gender,
+        calendar: input.calendar,
+        hasTime: input.hourIdx != null,
+        focus: r.focusKey,
+        chars: r.chart.total
+      });
+    }
+
     renderFree(r, input);
     show('screen-free');
 
@@ -535,17 +551,80 @@
     return out;
   }
 
-  /* --- 유료 : 반복되는 인생 패턴 3개 --------------------------------- */
+  /* --- 유료 : 반복되는 인생 패턴 3개 ---------------------------------
+     세 축을 겹치지 않게 나눈다.
+       ① 십성(제일 센 십성) — 사람 사이에서 내가 맡는 역할
+       ② 일주(日柱)와 지지 관계·도화 — 가까운 사이에서 생기는 어긋남
+       ③ 대운·올해 흐름 — 시기가 만드는 반복
+     ================================================================== */
+
+  // ② 일주 축: 도화 → 지지 충 → 일지의 기세(12운성) 순으로 하나를 고른다
+  function dayPillarAxis(chart) {
+    if (chart.dohwa) return 'dohwa';
+    var d = chart.pillars.day.branch;
+    var clash = ['year', 'month', 'hour'].some(function (k) {
+      var p = chart.pillars[k];
+      return p && ((p.branch - d) % 12 + 12) % 12 === 6;
+    });
+    if (clash) return 'chung';
+    var strong = ['장생', '관대', '건록', '제왕', '태', '양'].indexOf(chart.pillars.day.stage) >= 0;
+    return strong ? 'strong' : 'weak';
+  }
+
+  // ③ 대운·올해 축: 대운 지지가 일간 오행과 어떤 관계인지
+  function relToMe(chart, elem) {
+    var me = S.STEM_ELEM[chart.dayMaster];
+    if (!elem) return 'same';
+    if (me === elem) return 'same';
+    if (S.ELEM_MAKES[me] === elem) return 'makes';
+    if (S.ELEM_KILLS[me] === elem) return 'kills';
+    if (S.ELEM_KILLS[elem] === me) return 'killed';
+    if (S.ELEM_MAKES[elem] === me) return 'cycle';
+    return 'same';
+  }
+
+  function flowAxis(chart) {
+    var dw = chart.daewoon && chart.daewoon.current;
+    var yearNow = new Date().getFullYear();
+    var dy = yearNow - chart.solar.y;
+    var ys = (chart.pillars.year.stem + dy) % 10;
+    var yb = (chart.pillars.year.branch + dy) % 12;
+    var elem = dw ? S.BRANCH_ELEM[dw.branch] : S.BRANCH_ELEM[chart.pillars.year.branch];
+    return {
+      key: relToMe(chart, elem),
+      daeHanja: dw ? dw.hanja : '아직 대운 전',
+      daeKo: dw ? dw.ko : '대운 전',
+      yearHanja: S.STEMS_HANJA[ys] + S.BRANCHES_HANJA[yb],
+      yearKo: S.STEMS[ys] + S.BRANCHES[yb]
+    };
+  }
 
   function buildPatterns(r) {
     var out = [];
-    function add(pt) {
+    function add(pt, vars) {
       if (!pt) return;
-      out.push({ label: pt.label, text: fillv(pt.text, r), cut: fillv(pt.cut, r) });
+      var text = String(pt.text);
+      if (vars) {
+        Object.keys(vars).forEach(function (k) {
+          text = text.split('{' + k + '}').join(vars[k]);
+        });
+      }
+      out.push({ label: pt.label, text: fillv(text, r), cut: fillv(pt.cut, r) });
     }
+
+    // ① 십성 — 사람 사이에서 반복되는 역할
     add(C.PATTERN.god[r.palja.group]);
-    add(C.PATTERN.elem[r.palja.rel]);
-    add(r.chart.lacking.length ? C.PATTERN.lack : C.PATTERN.solid);
+
+    // ② 일주·지지·도화 — 가까운 사이의 결
+    add(C.PATTERN.pillar[dayPillarAxis(r.chart)]);
+
+    // ③ 대운·올해 — 시기가 만드는 반복
+    var flow = flowAxis(r.chart);
+    add(C.PATTERN.flow[flow.key], {
+      daeHanja: flow.daeHanja, daeKo: flow.daeKo,
+      yearHanja: flow.yearHanja, yearKo: flow.yearKo
+    });
+
     return out.slice(0, 3);
   }
 
@@ -640,7 +719,8 @@
     renderCycle($('#cycle'), r.chart, r.name);
     $('#fold-note').textContent = C.FREE.chartFoldNote;
 
-    // 운 미리보기
+    // 유료 미리보기 (구매 전 맛보기)
+    $('#preview-title').textContent = C.FREE.previewTitle;
     $('#preview-sub').textContent = C.FREE.previewSub;
     $('#preview-list').innerHTML = previewItems(r).map(function (it) {
       return '<li class="preview__item">' +
@@ -648,9 +728,9 @@
         '<span class="preview__chip">' + C.FREE.lockTag + '</span></div>' +
         '<p class="preview__text">' + hanjaize(it.text) + '</p></li>';
     }).join('');
-    $('#preview-lock').textContent = C.FREE.previewMore;
 
-    // 1,900원으로 열리는 것
+    // 1,900원으로 열리는 다섯 가지
+    $('#value-sub').textContent = C.FREE.valueSub;
     $('#value-focus').textContent = valueFocusLine();
     $('#value-note').textContent = C.FREE.valueNote;
 
@@ -662,8 +742,14 @@
     $('#btn-share-share').textContent = C.FREE.shareShare;
     $('#btn-share-share').hidden = !canShareFiles();
     state.shareInvite = false;
+    state.shareRatio = state.shareRatio === 'square' ? 'square' : 'story';
     $('#share-invite').checked = false;
-    drawShareCard(r);
+    $$('.seg[data-group="share-ratio"] .seg__btn').forEach(function (b) {
+      var on = b.getAttribute('data-ratio') === state.shareRatio;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    drawShareCard(r, state.shareRatio);
 
     // 인연 궤도 (무료)
     $('#orbit-kicker').textContent = C.FREE.orbitKicker;
@@ -1103,7 +1189,7 @@
     $('#btn-share-card').hidden = !canShareFiles();
   }
 
-  // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 BONUS 배지
+  // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 '한 겹 더' 배지
   function entryHtml(no, s) {
     var head = s.bonus
       ? '<div class="entry__badge">' + s.bonus + '</div>' +
@@ -1264,12 +1350,12 @@
         var ly = ny < cy ? ny - 20 : ny + 28;
         var on = state.selectedFriend === d.f.id ? ' is-on' : '';
         nodes += '<g class="orbit__node orbit__node--' + k + on + '" data-friend-id="' + esc(d.f.id) + '"' +
-          ' tabindex="0" role="button" aria-label="' + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ', ' + d.compat.score + '점">' +
+          ' tabindex="0" role="button" aria-label="' + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="26" fill="transparent"/>' +
           '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="15"/>' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="4.4" fill="' + S.ELEM_COLOR[d.compat.youElem] + '"/>' +
           '<text class="orbit__node-name" x="' + nx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + esc(label) + '</text>' +
-          '<title>' + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' · ' + d.compat.score + '점</title>' +
+          '<title>' + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' 관계</title>' +
           '</g>';
       });
     });
@@ -1296,7 +1382,7 @@
       return '<li class="orbit__item' + on + '">' +
         '<button type="button" class="orbit__pick" data-pick="' + esc(d.f.id) + '">' +
         '<span class="orbit__item-name">' + esc(d.f.name) + (d.f.sample ? '<i>샘플</i>' : '') + '</span>' +
-        '<span class="orbit__item-meta">' + typeOf(d.compat).name + ' · ' + d.compat.score + '점</span>' +
+        '<span class="orbit__item-meta">' + typeOf(d.compat).name + '</span>' +
         '</button>' +
         '<button type="button" class="orbit__remove" data-remove="' + esc(d.f.id) + '"' +
         ' aria-label="' + esc(C.orbit.removeAria.replace('{name}', d.f.name)) + '">×</button></li>';
@@ -1305,8 +1391,9 @@
     var sel = data.filter(function (d) { return d.f.id === state.selectedFriend; })[0];
     var cap = $('#orbit-caption');
     if (sel) {
-      cap.innerHTML = '<b>' + esc(sel.f.name) + ' 님 · ' + typeOf(sel.compat).name + ' · ' + sel.compat.score + '점</b>' +
-        '<span>' + hanjaize(state.paid ? orbitDetailParts(sel).detail : orbitLine(sel)) + '</span>';
+      cap.innerHTML = '<b>' + esc(sel.f.name) + ' 님 · ' + typeOf(sel.compat).name + '</b>' +
+        '<span>' + hanjaize(state.paid ? orbitDetailParts(sel).detail : orbitLine(sel)) + '</span>' +
+        '<span class="orbit__caption-advice">' + hanjaize(typeFill(typeOf(sel.compat).advice, sel)) + '</span>';
     } else {
       cap.innerHTML = fill(C.orbit.tip);
     }
@@ -1329,8 +1416,7 @@
       var it = orbitDetailParts(d);
       return '<li><div class="orbit__detail-top">' +
         '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>샘플</i></i>' : '') + '</span>' +
-        '<span class="orbit__detail-type">' + esc(it.type) + '</span>' +
-        '<span class="orbit__detail-score">' + it.score + '점</span></div>' +
+        '<span class="orbit__detail-type">' + esc(it.type) + '</span></div>' +
         '<p class="orbit__detail-text">' + hanjaize(it.detail) + '</p>' +
         '<p class="orbit__detail-advice">' + hanjaize(it.advice) + '</p></li>';
     }).join('');
@@ -1352,8 +1438,7 @@
       return f.name === name && f.year === state.invite.year && f.month === state.invite.month && f.day === state.invite.day;
     });
     box.innerHTML = '<p class="invite__kicker">초대 링크로 오셨네요</p>' +
-      '<h4 class="invite__title">' + esc(C.orbit.inviteLanded.replace(/\{name\}/g, name)) +
-      ' <b>' + item.compat.score + '점</b></h4>' +
+      '<h4 class="invite__title">' + esc(C.orbit.inviteLanded.replace(/\{name\}/g, name)) + '</h4>' +
       '<p class="invite__meta">내 궤도에서 ' + esc(name) + ' 님은 <b>' + typeOf(item.compat).name + ' · ' + orbitName(item.compat.orbit) + '</b></p>' +
       '<p class="invite__text">' + hanjaize(state.paid ? orbitDetailParts(item).detail : orbitLine(item)) + '</p>' +
       (already ? '' : '<button type="button" class="btn btn--line" data-invite-add>' + C.orbit.inviteAdd + '</button>');
@@ -1972,8 +2057,8 @@
     ctx.closePath();
   }
 
-  function brushRect(ctx, inset, width, alpha, amp, phase) {
-    var l = inset, t = inset, r = CW - inset, b = CH - inset;
+  function brushRect(ctx, inset, width, alpha, amp, phase, H) {
+    var l = inset, t = inset, r = CW - inset, b = (H || CH) - inset;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.lineWidth = width;
@@ -1990,13 +2075,13 @@
     ctx.restore();
   }
 
-  function inkBorder(ctx) {
+  function inkBorder(ctx, H) {
     ctx.save();
     ctx.strokeStyle = INK;
-    brushRect(ctx, 46, 30, 0.055, 4.4, 0.4);
-    brushRect(ctx, 46, 16, 0.97, 2.4, 1.1);
-    brushRect(ctx, 46, 6, 1, 1.2, 2.6);
-    brushRect(ctx, 86, 2.6, 0.9, 1.3, 3.3);
+    brushRect(ctx, 46, 30, 0.055, 4.4, 0.4, H);
+    brushRect(ctx, 46, 16, 0.97, 2.4, 1.1, H);
+    brushRect(ctx, 46, 6, 1, 1.2, 2.6, H);
+    brushRect(ctx, 86, 2.6, 0.9, 1.3, 3.3, H);
     ctx.restore();
   }
 
@@ -2045,32 +2130,35 @@
   }
 
   /* 한지 바탕 + 종이 결 + 붓 테두리 (두 캔버스가 같이 쓴다) */
-  function paintPaper(ctx, seed) {
+  function paintPaper(ctx, seed, H) {
+    var h = H || CH;
     var i, rnd = seededRand(seed);
     ctx.fillStyle = PAPER;
-    ctx.fillRect(0, 0, CW, CH);
-    for (i = 0; i < 2400; i++) {
+    ctx.fillRect(0, 0, CW, h);
+    var grain = Math.round(2400 * h / CH);
+    for (i = 0; i < grain; i++) {
       ctx.fillStyle = 'rgba(120,100,74,' + (0.005 + rnd() * 0.017).toFixed(3) + ')';
-      ctx.fillRect(rnd() * CW, rnd() * CH, 2.2, 2.2);
+      ctx.fillRect(rnd() * CW, rnd() * h, 2.2, 2.2);
     }
     ctx.lineCap = 'round';
     for (i = 0; i < 64; i++) {
       ctx.strokeStyle = 'rgba(120,100,74,' + (0.025 + rnd() * 0.045).toFixed(3) + ')';
       ctx.lineWidth = 1 + rnd() * 1.3;
-      var fx = rnd() * CW, fy = rnd() * CH, fa = rnd() * Math.PI, fl = 8 + rnd() * 22;
+      var fx = rnd() * CW, fy = rnd() * h, fa = rnd() * Math.PI, fl = 8 + rnd() * 22;
       ctx.beginPath();
       ctx.moveTo(fx, fy);
       ctx.lineTo(fx + Math.cos(fa) * fl, fy + Math.sin(fa) * fl);
       ctx.stroke();
     }
-    inkBorder(ctx);
+    inkBorder(ctx, h);
   }
 
-  function catBox(ctx, img, boxW, boxH, top) {
+  function catBox(ctx, img, boxW, boxH, top, W) {
     if (!img) return top + boxH;
+    var w0 = W || CW;
     var sc = Math.min(boxW / img.width, boxH / img.height);
     var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
-    ctx.drawImage(img, (CW - w) / 2, top + boxH - h, w, h);
+    ctx.drawImage(img, (w0 - w) / 2, top + boxH - h, w, h);
     return top + boxH;
   }
 
@@ -2203,20 +2291,27 @@
     });
   }
 
-  /* ---------- 무료 결과 카드 (팔자 고양이 · 팩폭 · 유입 링크) ---------- */
+  /* ---------- 무료 결과 카드 (팔자 고양이 · 팩폭 · 유입 링크) ----------
+     두 비율을 지원한다. 9:16 은 인스타 스토리, 1:1 은 카톡·피드용.
+     생년월일·출생시간은 넣지 않고, 유입 경로(서비스 주소·초대 링크)만 담는다. */
+
+  var SHARE_SIZE = { story: { w: 1080, h: 1920 }, square: { w: 1080, h: 1080 } };
 
   function shareLink() {
     if (state.shareInvite && state.reading && state.input) return inviteUrl();
     return location.origin + location.pathname;
   }
 
-  function drawShareCard(r) {
+  function drawShareCard(r, ratio) {
     var canvas = $('#share-card');
-    if (!canvas) return;
+    if (!canvas || !r) return;
+    var key = ratio === 'square' ? 'square' : 'story';
+    var sq = key === 'square';
+    var W = SHARE_SIZE[key].w, H = SHARE_SIZE[key].h;
     var ctx = canvas.getContext('2d');
     var p = r.palja;
     var art = ELEM_ART[p.elem] || ELEM_ART['수'];
-    var seed = hashStr('share|' + (r.name || '') + '|' + p.name + '|' + (state.input ? state.input.day : ''));
+    var seed = hashStr('share|' + (r.name || '') + '|' + p.name + '|' + (state.input ? state.input.day : '') + '|' + key);
     var rnd = seededRand(seed || 20261124);
 
     var imgPromise = loadImage('public/cat-' + art.slug + '-ink.webp').then(function (im) {
@@ -2227,114 +2322,118 @@
       var img = res[1];
       var i;
 
-      if (canvas.width !== CW) canvas.width = CW;
-      if (canvas.height !== CH) canvas.height = CH;
+      if (canvas.width !== W) canvas.width = W;
+      if (canvas.height !== H) canvas.height = H;
 
-      ctx.clearRect(0, 0, CW, CH);
+      ctx.clearRect(0, 0, W, H);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      paintPaper(ctx, seed);
-      sealStamp(ctx, CW - 206, 140, 84, C.brand.stamp, rnd);
+      paintPaper(ctx, seed, H);
+      sealStamp(ctx, W - 206, sq ? 104 : 140, sq ? 72 : 84, C.brand.stamp, rnd);
 
-      /* 머리글 */
+      /* 머리글 — 서비스명 */
       ctx.fillStyle = INK2;
-      fillSpaced(ctx, C.brand.name, CW / 2, 196, 5, 'center', 30, 700);
-      plumDivider(ctx, CW / 2, 232, 132);
+      fillSpaced(ctx, C.brand.name, W / 2, sq ? 158 : 196, sq ? 4 : 5, 'center', sq ? 26 : 30, 700);
+      plumDivider(ctx, W / 2, sq ? 190 : 232, sq ? 112 : 132);
 
       /* 팔자 고양이 */
       ctx.fillStyle = RED_D;
-      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', CW / 2, 288, 6, 'center', 24, 700);
+      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', W / 2, sq ? 230 : 288, 6, 'center', sq ? 21 : 24, 700);
 
-      var artBottom = catBox(ctx, img, 570, 474, 288);
+      var artBottom = catBox(ctx, img, sq ? 330 : 570, sq ? 186 : 474, sq ? 240 : 288, W);
 
       ctx.textAlign = 'center';
       ctx.fillStyle = INK;
-      ctx.font = '800 100px ' + F_SANS;
-      ctx.fillText(p.name, CW / 2, artBottom + 112);
+      ctx.font = (sq ? '800 76px ' : '800 100px ') + F_SANS;
+      ctx.fillText(p.name, W / 2, artBottom + (sq ? 74 : 112));
 
       ctx.fillStyle = S.ELEM_INK[p.elem];
-      fillSpaced(ctx, p.hanja + ' · ' + p.short, CW / 2, artBottom + 164, 5, 'center', 28, 700);
+      fillSpaced(ctx, p.hanja + ' · ' + p.short, W / 2, artBottom + (sq ? 110 : 164), 5, 'center', sq ? 21 : 28, 700);
 
       /* 한 줄 정의 */
-      var y = artBottom + 216;
-      var defSize = 38, defLh = 57, defLines;
-      for (; defSize >= 26; defSize -= 2) {
+      var maxDef = sq ? 2 : 3;
+      var defSize = sq ? 26 : 38, defLh = Math.round(defSize * (sq ? 1.38 : 1.5)), defLines;
+      var y = artBottom + (sq ? 146 : 216);
+      for (; defSize >= 24; defSize -= 2) {
         ctx.font = '700 ' + defSize + 'px ' + F_SANS;
         defLh = Math.round(defSize * 1.5);
-        defLines = wrapChars(ctx, p.def, 860, 3);
-        if (defLines.length <= 3) break;
+        defLines = wrapChars(ctx, p.def, 860, maxDef);
+        if (defLines.length <= maxDef) break;
       }
       ctx.fillStyle = INK;
       ctx.font = '700 ' + defSize + 'px ' + F_SANS;
       for (i = 0; i < defLines.length; i++) {
-        ctx.fillText(defLines[i], CW / 2, y + i * defLh);
+        ctx.fillText(defLines[i], W / 2, y + i * defLh);
       }
-      y += (defLines.length - 1) * defLh + Math.round(defSize * 0.9);
+      y += (defLines.length - 1) * defLh + Math.round(defSize * (sq ? 0.86 : 0.9));
 
       /* 천기팩폭 띠 */
-      var bandPad = 30, bandTop = y + 28;
-      var bombSize = 32, bombLh = 48, bombLines;
+      var bandPad = sq ? 18 : 30;
+      var bandTop = y + (sq ? 16 : 28);
+      var bombSize = sq ? 27 : 32, bombLh = sq ? 34 : 48, bombLines;
       ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
-      bombLines = wrapChars(ctx, tidy(p.bomb), 820, 4);
-      var bandH = bandPad + 34 + 16 + bombLines.length * bombLh + bandPad;
+      bombLines = wrapChars(ctx, tidy(p.bomb), sq ? 820 : 820, sq ? 2 : 4);
+      var bandH = bandPad + (sq ? 22 : 34) + (sq ? 8 : 16) + bombLines.length * bombLh + bandPad;
 
       ctx.save();
       ctx.fillStyle = RED;
-      wobbleRectPath(ctx, 80, bandTop, CW - 80, bandTop + bandH, 2.4, 1.4);
+      wobbleRectPath(ctx, 80, bandTop, W - 80, bandTop + bandH, 2.4, 1.4);
       ctx.fill();
       ctx.strokeStyle = RED_D;
       ctx.lineWidth = 2.4;
-      wobbleRectPath(ctx, 84, bandTop + 4, CW - 84, bandTop + bandH - 4, 1.6, 2.2);
+      wobbleRectPath(ctx, 84, bandTop + 4, W - 84, bandTop + bandH - 4, 1.6, 2.2);
       ctx.stroke();
       ctx.restore();
 
       ctx.fillStyle = '#E7D9C4';
-      fillSpaced(ctx, C.ui.arumulet.factKicker, CW / 2, bandTop + bandPad + 18, 7, 'center', 23, 700);
+      fillSpaced(ctx, C.ui.arumulet.factKicker, W / 2, bandTop + bandPad + (sq ? 16 : 18), 7, 'center', sq ? 19 : 23, 700);
 
       ctx.fillStyle = PAPER_HI;
       ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
       for (i = 0; i < bombLines.length; i++) {
-        ctx.fillText(bombLines[i], CW / 2, bandTop + bandPad + 34 + 16 + i * bombLh + 22);
+        ctx.fillText(bombLines[i], W / 2, bandTop + bandPad + (sq ? 22 : 34) + (sq ? 8 : 16) + i * bombLh + (sq ? 19 : 22));
       }
 
-      /* 해시태그 · 명식 근거 (유형을 만든 여덟 글자) */
+      /* 해시태그 · 유형 근거 */
       ctx.fillStyle = '#4E6349';
-      fillSpaced(ctx, p.tags.join('  '), CW / 2, bandTop + bandH + 56, 1, 'center', 24, 700);
+      fillSpaced(ctx, p.tags.join('  '), W / 2, bandTop + bandH + (sq ? 30 : 56), 1, 'center', sq ? 20 : 24, 700);
 
-      ctx.fillStyle = INK3;
-      fillSpaced(ctx, p.facts.join('   ·   '), CW / 2, bandTop + bandH + 108, 0.6, 'center', 24, 400);
+      if (!sq) {
+        ctx.fillStyle = INK3;
+        fillSpaced(ctx, p.facts.join('   ·   '), W / 2, bandTop + bandH + 108, 0.6, 'center', 24, 400);
+      }
 
       /* 아래 - 유입 링크 */
-      var footRule = Math.max(CH - 360, bandTop + bandH + 172);
-      plumDivider(ctx, CW / 2, footRule, 150);
+      var footRule = sq ? H - 250 : Math.max(H - 360, bandTop + bandH + 172);
+      plumDivider(ctx, W / 2, footRule, sq ? 120 : 150);
 
       ctx.fillStyle = INK;
-      fillSpaced(ctx, C.FREE.shareLinkLine, CW / 2, footRule + 62, 2, 'center', 32, 700);
+      fillSpaced(ctx, C.FREE.shareLinkLine, W / 2, footRule + (sq ? 38 : 62), 2, 'center', sq ? 27 : 32, 700);
 
       var link = shareLink();
       var shown = link.replace(/^https?:\/\//, '').replace(/\/$/, '');
-      var linkSize = 26, linkLines;
-      for (; linkSize >= 18; linkSize -= 1) {
+      var linkSize = sq ? 18 : 26, linkLines, maxLink = sq ? 1 : 2;
+      for (; linkSize >= 16; linkSize -= 1) {
         ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
-        linkLines = wrapChars(ctx, shown, 830, 2);
-        if (linkLines.length <= 2) break;
+        linkLines = wrapChars(ctx, shown, sq ? 860 : 830, maxLink);
+        if (linkLines.length <= maxLink) break;
       }
       ctx.fillStyle = INK2;
       ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
       for (i = 0; i < linkLines.length; i++) {
-        ctx.fillText(linkLines[i], CW / 2, footRule + 112 + i * Math.round(linkSize * 1.4));
+        ctx.fillText(linkLines[i], W / 2, footRule + (sq ? 66 : 112) + i * Math.round(linkSize * 1.4));
       }
 
       ctx.fillStyle = INK3;
-      ctx.font = '400 23px ' + F_SANS;
+      ctx.font = (sq ? '400 17px ' : '400 23px ') + F_SANS;
       ctx.fillText(
         state.shareInvite ? r.callName + C.FREE.shareInviteFooter : C.FREE.shareNoInfo,
-        CW / 2, CH - 132
+        W / 2, sq ? H - 152 : H - 150
       );
 
       ctx.fillStyle = 'rgba(30,26,23,0.42)';
-      fillSpaced(ctx, C.ui.arumulet.notice, CW / 2, CH - 92, 2, 'center', 21, 400);
+      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, sq ? H - 120 : H - 108, 2, 'center', sq ? 15 : 21, 400);
 
       state.shareReady = true;
     });
@@ -2349,9 +2448,25 @@
   }
 
   function bindShare() {
+    var seg = $('.seg[data-group="share-ratio"]');
+    if (seg) {
+      seg.addEventListener('click', function (e) {
+        var btn = e.target.closest('.seg__btn');
+        if (!btn || !state.reading) return;
+        $$('.seg__btn', seg).forEach(function (b) {
+          b.classList.remove('is-on');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        btn.classList.add('is-on');
+        btn.setAttribute('aria-pressed', 'true');
+        state.shareRatio = btn.getAttribute('data-ratio') === 'square' ? 'square' : 'story';
+        drawShareCard(state.reading, state.shareRatio);
+      });
+    }
+
     $('#share-invite').addEventListener('change', function () {
       state.shareInvite = $('#share-invite').checked;
-      drawShareCard(state.reading);
+      drawShareCard(state.reading, state.shareRatio);
     });
 
     $('#btn-share-save').addEventListener('click', function () {
@@ -2362,13 +2477,13 @@
         var a = document.createElement('a');
         var safe = (state.reading.palja.name || '냥사주').replace(/[^\w가-힣]/g, '');
         a.href = url;
-        a.download = C.FREE.shareFile + safe + '.png';
+        a.download = C.FREE.shareFile + safe + (state.shareRatio === 'square' ? '-1x1' : '-9x16') + '.png';
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
         toast(C.ui.toast.saved);
-        AN.track('result_share', { method: 'save', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+        AN.track('result_share', { method: 'save', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
       }, 'image/png');
     });
 
@@ -2376,7 +2491,7 @@
       var canvas = $('#share-card');
       canvas.toBlob(function (blob) {
         if (!blob) return;
-        var file = new File([blob], C.FREE.shareFile + '.png', { type: 'image/png' });
+        var file = new File([blob], C.FREE.shareFile + (state.shareRatio === 'square' ? '1x1' : '9x16') + '.png', { type: 'image/png' });
         var payload = {
           files: [file],
           title: C.brand.name,
@@ -2384,12 +2499,12 @@
         };
         if (navigator.canShare(payload)) {
           navigator.share(payload).then(function () {
-            AN.track('result_share', { method: 'share', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+            AN.track('result_share', { method: 'share', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
           }).catch(function () { });
         } else {
           copyText(state.reading.palja.name + ' · ' + tidy(state.reading.palja.bomb)).then(function () {
             toast(C.ui.toast.shared);
-            AN.track('result_share', { method: 'copy', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+            AN.track('result_share', { method: 'copy', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
           });
         }
       }, 'image/png');

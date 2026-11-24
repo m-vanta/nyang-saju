@@ -318,7 +318,7 @@
             <img class="hero__cat" src="public/cat-hero-ink.png" alt="화투패 네 장을 펼쳐 놓고 붓을 든 콩눈 고양이 도사 그림" />
           </picture>
         </div>
-        <p class="hero__line">생년월일만 넣으면 <span class="nobr">팔자 고양이</span>와 천기팩폭은 공짜. 사주명식·인연 궤도까지 무료로 펼쳐 드린다냥.</p>
+        <p class="hero__line">생년월일만 넣으면 여덟 글자가 부르는 <span class="nobr">팔자 고양이</span>가 나온다냥. 명식과 인연 궤도까지 한 번에 펼쳐 드린다냥.</p>
 
         <aside class="invite-bar" id="invite-banner" hidden>
           <p class="invite-bar__kicker" id="invite-banner-kicker">초대 링크로 오셨네요</p>
@@ -365,8 +365,8 @@
 
         <aside class="notice">
           <div class="notice__copy">
-            <p class="notice__kicker">여기까지 무료</p>
-            <p class="notice__text">팔자 고양이 · 천기팩폭 · 사주명식 · 인연 궤도까지 무료. 깊은 풀이만 복채 1,900원.</p>
+            <p class="notice__kicker">냥도사의 안내</p>
+            <p class="notice__text">팔자 고양이 · 명식 · 인연 궤도는 무료, 다섯 가지 깊은 풀이만 복채 1,900원이에요.</p>
           </div>
           <svg class="notice__card" viewBox="0 0 112 88" aria-hidden="true">
             <g transform="rotate(8 72 52)">
@@ -461,7 +461,7 @@
             <span>내 팔자 고양이 보기</span>
             <svg class="gold-btn__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
           </button>
-          <p class="form__note">팔자 고양이 · 명식 · 인연 궤도 무료 · 전체 풀이 복채 1,900원</p>
+          <p class="form__note">입력한 생년월일은 이 브라우저에 저장하지 않아요.</p>
         </form>
 
         <footer class="foot">
@@ -488,7 +488,7 @@
         </div>
 
         <div class="crumb">
-          <span class="crumb__tag" id="free-crumb">공짜로 펼친 천기</span>
+          <span class="crumb__tag" id="free-crumb">냥도사가 무료로 연 천기</span>
           <button type="button" class="link" data-action="back-input">입력 고치기</button>
         </div>
 
@@ -507,18 +507,20 @@
             <span class="catcard__hanja" id="cat-hanja">癸水 · 비·이슬</span>
           </div>
 
-          <p class="catcard__def" id="cat-def"></p>
-          <p class="catcard__facts" id="cat-facts"></p>
+          <!-- 2) 캐릭터명과 대표 키워드 -->
           <ul class="catcard__tags" id="cat-tags"></ul>
+          <p class="catcard__facts" id="cat-facts"></p>
+          <p class="catcard__def" id="cat-def"></p>
           <p class="catcard__essay" id="cat-essay"></p>
         </section>
 
+        <!-- 3) 천기팩폭 -->
         <aside class="fact-ribbon">
           <p class="fact-ribbon__kicker">냥도사의 천기팩폭</p>
           <p class="fact-ribbon__text" id="free-bomb"></p>
         </aside>
 
-        <!-- 대표 성향 3 -->
+        <!-- 4) 대표 성향 핵심 3 -->
         <section class="traits" aria-labelledby="traits-title">
           <div class="sec-head">
             <span class="sec-head__kicker">무료 · 자기발견</span>
@@ -528,7 +530,33 @@
           <ol class="traits__list" id="traits-list"></ol>
         </section>
 
-        <!-- 사주명식 · 오행 분포 (접기) -->
+        <!-- 5) 결과 이미지 공유 — 9:16 스토리 / 1:1 카톡 -->
+        <section class="share" id="share-block" aria-labelledby="share-title">
+          <div class="share__head">
+            <span class="share__kicker">무료 · 결과 카드</span>
+            <h3 class="share__title" id="share-title">결과 카드로 저장하기</h3>
+            <p class="share__sub" id="share-sub">인스타 스토리용 9:16, 카톡·피드용 1:1 중에 골라 저장해요.</p>
+          </div>
+          <div class="seg seg--share" data-group="share-ratio" role="group" aria-label="결과 카드 비율">
+            <button type="button" class="seg__btn is-on" data-ratio="story" aria-pressed="true">9:16 스토리</button>
+            <button type="button" class="seg__btn" data-ratio="square" aria-pressed="false">1:1 카톡</button>
+          </div>
+          <div class="share__frame" id="share-frame">
+            <canvas id="share-card" width="1080" height="1920" aria-label="팔자 고양이 유형과 천기팩폭을 담은 공유 카드"></canvas>
+          </div>
+          <label class="check share__opt">
+            <input type="checkbox" id="share-invite" />
+            <span class="check__box" aria-hidden="true"></span>
+            <span class="share__opt-label" id="share-invite-label">친구 초대 링크도 함께 넣기</span>
+          </label>
+          <p class="share__opt-hint" id="share-invite-hint"></p>
+          <div class="share__actions">
+            <button type="button" class="btn btn--line" id="btn-share-save">카드 저장</button>
+            <button type="button" class="btn btn--line" id="btn-share-share" hidden>공유하기</button>
+          </div>
+        </section>
+
+        <!-- 6) 사주명식 · 오행 분포 -->
         <details class="fold" id="fold-chart">
           <summary class="fold__sum">
             <span class="fold__key">사주명식 · 오행 분포</span>
@@ -561,40 +589,32 @@
           </div>
         </details>
 
-        <!-- 연애 · 재물 · 직업운 미리보기 -->
-        <section class="preview" aria-labelledby="preview-title">
+        <!-- 7) 유료 콘텐츠 미리보기 및 결제 -->
+        <section class="value" id="value-block" aria-labelledby="value-title">
           <div class="sec-head">
-            <span class="sec-head__kicker">여기서부터 복채 1,900원</span>
-            <h3 class="sec-head__title" id="preview-title">연애 · 재물 · 직업운 미리보기</h3>
-            <p class="sec-head__sub" id="preview-sub">한 줄씩만 맛보기로 드립니다.</p>
+            <span class="sec-head__kicker">유료 · 다섯 가지</span>
+            <h3 class="sec-head__title" id="value-title">복채 1,900원으로 열리는 다섯 가지</h3>
+            <p class="sec-head__sub" id="value-sub">오늘 무료로 받은 팔자 고양이에, 여덟 글자 근거를 붙여 다섯 가지를 더 풉니다.</p>
           </div>
-          <ul class="preview__list" id="preview-list"></ul>
-          <p class="preview__lock" id="preview-lock">전체 풀이는 복채 1,900원이에요.</p>
+
+          <div class="preview" id="preview-block" aria-labelledby="preview-title">
+            <p class="preview__title" id="preview-title">먼저 맛보기 — 연애 · 재물 · 직업운</p>
+            <p class="preview__sub" id="preview-sub">세 운을 한 줄씩만 미리 보여 드려요.</p>
+            <ul class="preview__list" id="preview-list"></ul>
+          </div>
+
+          <p class="value__label">1,900원에 담기는 것</p>
+          <ol class="value__list" id="value-list"></ol>
+          <p class="value__focus" id="value-focus"></p>
+          <button type="button" class="gold-btn gold-btn--full" id="btn-unlock">
+            <svg class="gold-btn__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
+            <span>복채 1,900원으로 전체 풀이 보기</span>
+            <svg class="gold-btn__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
+          </button>
+          <p class="value__note" id="value-note">지금은 미리보기 결제라 카드값이 나가지 않아요.</p>
         </section>
 
-        <!-- 무료 결과 카드 -->
-        <section class="share" id="share-block" aria-labelledby="share-title">
-          <div class="share__head">
-            <span class="share__kicker">무료 · 바이럴</span>
-            <h3 class="share__title" id="share-title">무료 결과 카드</h3>
-            <p class="share__sub" id="share-sub">인스타 스토리·단톡방에 붙이는 카드예요.</p>
-          </div>
-          <div class="share__frame">
-            <canvas id="share-card" width="1080" height="1920" aria-label="팔자 고양이 유형과 천기팩폭을 담은 공유 카드"></canvas>
-          </div>
-          <label class="check share__opt">
-            <input type="checkbox" id="share-invite" />
-            <span class="check__box" aria-hidden="true"></span>
-            <span class="share__opt-label" id="share-invite-label">친구 초대 링크도 함께 넣기</span>
-          </label>
-          <p class="share__opt-hint" id="share-invite-hint"></p>
-          <div class="share__actions">
-            <button type="button" class="btn btn--line" id="btn-share-save">카드 저장</button>
-            <button type="button" class="btn btn--line" id="btn-share-share" hidden>공유하기</button>
-          </div>
-        </section>
-
-        <!-- 인연 궤도 · 무료 -->
+        <!-- 8) 인연 궤도 · 무료 -->
         <section class="orbit" id="orbit-block" aria-labelledby="orbit-title">
           <div class="orbit__head">
             <span class="orbit__kicker" id="orbit-kicker">무료 · 관계 지도</span>
@@ -642,23 +662,6 @@
           </div>
           <p class="orbit__hint" id="orbit-invite-hint">링크를 받은 친구가 자기 사주를 보면, 그 친구와의 궁합이 같이 나와요.</p>
           <p class="orbit__lock" id="orbit-lock">궤도에 오른 사람마다의 상세 관계 해석은 복채 1,900원이에요.</p>
-        </section>
-
-        <!-- 1,900원으로 열리는 것 -->
-        <section class="value" aria-labelledby="value-title">
-          <div class="sec-head">
-            <span class="sec-head__kicker">복채 1,900원</span>
-            <h3 class="sec-head__title" id="value-title">복채 1,900원으로 열리는 것</h3>
-            <p class="sec-head__sub" id="value-sub">오늘 무료로 받은 팔자 고양이에, 여덟 글자 근거를 붙여 다섯 가지를 더 풉니다.</p>
-          </div>
-          <ol class="value__list" id="value-list"></ol>
-          <p class="value__focus" id="value-focus"></p>
-          <button type="button" class="gold-btn gold-btn--full" id="btn-unlock">
-            <svg class="gold-btn__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
-            <span>복채 1,900원으로 전체 풀이 보기</span>
-            <svg class="gold-btn__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
-          </button>
-          <p class="value__note" id="value-note">지금은 미리보기 결제라 카드값이 나가지 않아요.</p>
         </section>
 
         <footer class="foot">

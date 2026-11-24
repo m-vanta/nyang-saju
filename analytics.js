@@ -2,10 +2,11 @@
    냥도사 · 행동 데이터 (analytics.js)
    --------------------------------------------------------------------------
    무료 → 유료 퍼널에서 실제로 어디서 멈추는지 보려면 화면이 아니라 사건을 세야 한다.
-   여기서 세는 일곱 개가 이 앱의 퍼널 전부다.
+   여기서 세는 여덟 개가 이 앱의 퍼널 전부다.
 
      page_view         화면이 열렸다 (유입 경로 inviter · referrer 포함)
      input_start       생년월일 폼을 처음 건드렸다 (한 번만)
+     input_complete    생년월일·성별·관심운세를 다 채우고 폼을 냈다 (한 번만)
      free_result_view  무료 천기(팔자 고양이)가 열렸다
      result_share      무료 결과 카드를 저장/공유했다
      friend_invite     친구 초대 링크를 복사/공유했다
@@ -22,7 +23,7 @@
   var KEY = 'nyangsaJu.analytics.v1';
   var MAX = 400;
   var EVENTS = [
-    'page_view', 'input_start', 'free_result_view',
+    'page_view', 'input_start', 'input_complete', 'free_result_view',
     'result_share', 'friend_invite', 'pay_button_click', 'payment_complete'
   ];
 
