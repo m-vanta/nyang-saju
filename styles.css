@@ -3380,3 +3380,10 @@ body.is-free.is-free-scrolled .sticky-cta { display: flex; animation: ctaUp 0.35
   line-height: 1;
   cursor: pointer;
 }
+
+.gold-btn:disabled,
+.gold-btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
