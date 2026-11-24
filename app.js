@@ -2253,7 +2253,7 @@
     return top + boxH;
   }
 
-  /* ---------- 나만의 천기부적 (유료 · 1080×1920) ---------- */
+  /* ---------- 나만의 천기부적 (유료, 1080×1920) ---------- */
   function drawAmulet(r, elem) {
     var canvas = $('#amulet');
     if (!canvas) return;
