@@ -971,6 +971,18 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
   margin: 0 0 16px;
 }
 
+/* 유료 결과 상단 — 실결제 OFF 고지 */
+.demo-note {
+  margin: -6px 0 16px;
+  padding: 7px 10px 8px;
+  border-left: 3px solid var(--gold);
+  background: rgba(217, 155, 38, 0.12);
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
 .crumb__tag {
   font-family: var(--serif);
   font-weight: 700;
@@ -1471,6 +1483,17 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
   text-wrap: balance;
 }
 
+/* 결과 상단 — 제일 크게 도는 십성 한 줄 */
+.postcard__ten {
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dotted var(--rule-2);
+}
+
 /* 랜딩의 도사냥이처럼 — 결과 상단 한가운데 280px */
 .postcard__hero {
   margin: 16px auto 0;
@@ -1651,6 +1674,44 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
 
 .entry__why { color: var(--ink-3); font-size: 13px; }
 
+/* 상세 해설의 명리 근거 — 일간·일주·오행·십성·대운을 한 줄로 */
+.entry__basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: -4px 0 13px;
+  padding: 7px 10px 8px;
+  background: rgba(30, 26, 23, 0.045);
+  border-left: 3px solid var(--ink-3);
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.entry__basis b {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.entry__basis-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1px 6px;
+}
+
+.entry__basis-list span { white-space: nowrap; }
+
+.entry__basis-list i {
+  font-style: normal;
+  color: var(--ink-3);
+}
+
 .entry--talis {
   margin-top: 18px;
   padding: 18px 16px 19px;
@@ -1679,7 +1740,7 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
   line-height: 1.65;
 }
 
-/* 보너스 — 본편 뒤에 얹는 시선 풀이 묶음 (BONUS 01·02·03) */
+/* 한 겹 더 — 본편 뒤에 얹는 시선 풀이 묶음 (한 겹 더 01·02·03) */
 .bonus { margin: 38px 0 0; }
 
 .bonus__head {
@@ -1743,7 +1804,7 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
 
 .bonus .entries { margin-top: 0; }
 
-/* 보너스 섹션 머리 — 번호 인주 대신 BONUS 배지 */
+/* 한 겹 더 머리 — 번호 인주 대신 '한 겹 더' 배지 */
 .entry--bonus .entry__head {
   display: block;
   margin-bottom: 12px;
@@ -2127,6 +2188,17 @@ body.is-teaser .toast { bottom: 118px; }
   line-height: 1.6;
 }
 
+.orbit__sample {
+  margin: 0 0 10px;
+  padding: 9px 11px 10px;
+  background: rgba(217, 155, 38, 0.14);
+  border-left: 3px solid var(--gold);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
 .orbit__map {
   padding: 4px;
   background: var(--paper-hi);
@@ -2145,6 +2217,7 @@ body.is-teaser .toast { bottom: 118px; }
 .orbit__node--1 .orbit__node-ring { fill: var(--sage); stroke: var(--sage-2); stroke-width: 2; }
 .orbit__node--2 .orbit__node-ring { fill: var(--paper-hi); stroke: var(--gold-2); }
 .orbit__node--3 .orbit__node-ring { fill: var(--paper); stroke: var(--ink-3); stroke-dasharray: 3 3; }
+.orbit__node--sample .orbit__node-name { fill: var(--ink-3); }
 .orbit__node-name {
   font-family: var(--sans);
   font-size: 12px;
@@ -2585,6 +2658,18 @@ body.is-teaser .toast { bottom: 118px; }
   text-wrap: balance;
 }
 
+/* 정의 아래 — 제일 크게 도는 십성 한 줄 */
+.catcard__ten {
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin: 9px auto 0;
+  max-width: 330px;
+  padding-top: 8px;
+  border-top: 1px dotted var(--rule-2);
+}
+
 .catcard__facts {
   display: flex;
   flex-wrap: wrap;
@@ -2925,6 +3010,13 @@ body.is-teaser .toast { bottom: 118px; }
   margin-top: 8px;
 }
 
+/* 미리보기 바로 아래 오는 구매 버튼 */
+.value__cta {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--rule-2);
+}
+
 /* ------------------------------ 유료 · 연 천기 목록 ------------------------------ */
 
 .opened {
@@ -3027,6 +3119,16 @@ body.is-teaser .toast { bottom: 118px; }
   margin-top: 3px;
 }
 
+.pattern__basis {
+  grid-column: 2;
+  display: block;
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  letter-spacing: -0.01em;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
 .pattern__cut {
   grid-column: 2;
   display: block;
@@ -3060,14 +3162,14 @@ body.is-teaser .toast { bottom: 118px; }
   margin: 14px 0 6px;
 }
 
-.orbit__legend--types { grid-template-columns: repeat(3, 1fr); }
+.orbit__legend--types { grid-template-columns: repeat(2, 1fr); }
 
 .orbit__leg--type {
   display: grid;
   grid-template-columns: 8px 1fr;
   align-items: center;
   gap: 1px 6px;
-  padding: 6px 7px;
+  padding: 7px 8px 8px;
   border: 1px solid var(--rule);
   text-align: left;
 }
@@ -3084,6 +3186,14 @@ body.is-teaser .toast { bottom: 118px; }
   font-style: normal;
   font-size: var(--fs-cap);
   color: var(--ink-3);
+}
+
+.orbit__leg-line {
+  grid-column: 2;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  letter-spacing: -0.01em;
 }
 
 .orbit__leg--type i { width: 8px; height: 8px; border-radius: 50%; align-self: start; margin-top: 4px; }

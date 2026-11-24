@@ -122,6 +122,10 @@
     }
     var def = base.core + ', ' + mod + ' ' + base.name;
 
+    /* --- 제일 크게 도는 십성 한 줄 (정의 아래에 붙는 개인화 근거) --- */
+    var godLine = josa(top.god, '이가') + ' ' + top.n + '개로 제일 크게 돌아요. ' +
+      C.PALJA_TEN_MOD[top.god] + ' 쪽이에요.';
+
     /* --- 오행·십성 수치 한 줄 (사주 근거를 눈에 보이게) --- */
     var facts = [
       '일간 ' + chart.dayMasterName,
@@ -144,7 +148,7 @@
         ? ' ' + josa(lackKo, '은는') + ' 하나도 안 들어왔고요.'
         : ' ' + josa(S.ELEM_KO[chart.dist.slice().sort(function (a, b) { return a.count - b.count; })[0].elem], '은는') + ' 제일 얇아요.'));
     essay.push('드러난 십신은 ' + list.slice(0, 3).map(function (x) { return x.t + ' ' + x.n; }).join(' · ') +
-      ' 순서고, 그중 ' + josa(top.god, '이가') + ' 제일 크게 돕니다. ' + S.TEN_GROUP[top.god] + '이라, 그게 ' + call + '의 기본값이에요.');
+      ' 순서고, 그중 ' + josa(top.god, '이가') + ' 제일 크게 도는 편이에요. ' + S.TEN_GROUP[top.god] + '이라, 그게 ' + call + '의 기본값처럼 나오기 쉬워요.');
     essay.push(base.read);
     essay.push(fill(C.PALJA_ESSAY[rel]));
     essay = essay.join(' ').replace(/\{name\}/g, call);
@@ -181,6 +185,7 @@
       elemHanja: S.ELEM_HANJA[elem],
       core: base.core,
       def: def,
+      tenLine: godLine,
       facts: facts,
       tags: tags,
       essay: essay,

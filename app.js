@@ -428,8 +428,9 @@
     try {
       r = buildReading(S.computePillars(input), input);
     } catch (e) {
+      if (window.console && console.error) console.error(e);
       err.textContent = /음력/.test(e && e.message ? e.message : '')
-        ? '음력 날짜가 안 맞는다. 생년월일을 다시 확인해 봐.'
+        ? '음력 날짜가 맞지 않아요. 생년월일을 다시 확인해 주세요.'
         : C.ui.error;
       err.hidden = false;
       return;
@@ -527,6 +528,7 @@
         title: '올해 총운',
         term: '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count +
           '개(' + r.palja.pct + '%)',
+        basis: basisFor(r, 'year'),
         body: fill(r.master.focus.year, r.name),
         why: r.timingText || ''
       });
@@ -545,10 +547,40 @@
         kicker: T.kicker,
         term: r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count + '개(' +
           r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount,
+        basis: basisFor(r, k),
         body: body
       });
     });
     return out;
+  }
+
+  /* --- 상세 해설의 명리 근거 한 줄 -----------------------------------
+     일간·일주·오행·십성·대운·올해 중 그 운에 실제로 쓰인 축만 골라 붙인다. */
+  function basisFor(r, key) {
+    var c = r.chart;
+    var day = c.pillars.day;
+    var dayLine = day ? '일주 ' + day.hanja : '';
+    var elem = r.palja.strongKo + ' ' + c.strongest.count + '개(' + c.strongest.pct + '%)';
+    var god = r.palja.topGod + ' ' + r.palja.godCount;
+    var flow = flowAxis(c);
+    var parts = ['일간 ' + r.dayMaster.short];
+    if (key === 'love') {
+      if (dayLine) parts.push(dayLine);
+      parts.push(elem);
+      parts.push(god);
+    } else if (key === 'money') {
+      parts.push(elem);
+      parts.push(god);
+      parts.push('대운 ' + flow.daeHanja);
+    } else if (key === 'work') {
+      if (dayLine) parts.push(dayLine);
+      parts.push(god);
+      parts.push('대운 ' + flow.daeHanja);
+    } else {
+      parts.push('대운 ' + flow.daeHanja);
+      parts.push('올해 ' + flow.yearHanja);
+    }
+    return parts.join(' · ');
   }
 
   /* --- 유료 : 반복되는 인생 패턴 3개 ---------------------------------
@@ -601,7 +633,7 @@
 
   function buildPatterns(r) {
     var out = [];
-    function add(pt, vars) {
+    function add(pt, vars, basis) {
       if (!pt) return;
       var text = String(pt.text);
       if (vars) {
@@ -609,21 +641,24 @@
           text = text.split('{' + k + '}').join(vars[k]);
         });
       }
-      out.push({ label: pt.label, text: fillv(text, r), cut: fillv(pt.cut, r) });
+      out.push({ label: pt.label, text: fillv(text, r), cut: fillv(pt.cut, r), basis: basis || '' });
     }
 
     // ① 십성 — 사람 사이에서 반복되는 역할
-    add(C.PATTERN.god[r.palja.group]);
+    add(C.PATTERN.god[r.palja.group], null, '십성 · ' + r.palja.topGod + ' ' + r.palja.godCount);
 
     // ② 일주·지지·도화 — 가까운 사이의 결
-    add(C.PATTERN.pillar[dayPillarAxis(r.chart)]);
+    var axis = dayPillarAxis(r.chart);
+    var axisKo = { dohwa: '도화', chung: '지지 충', strong: '일지 기세 강', weak: '일지 기세 약' }[axis];
+    add(C.PATTERN.pillar[axis], null,
+      '일주 · ' + r.chart.pillars.day.hanja + (axisKo ? ' · ' + axisKo : ''));
 
     // ③ 대운·올해 — 시기가 만드는 반복
     var flow = flowAxis(r.chart);
     add(C.PATTERN.flow[flow.key], {
       daeHanja: flow.daeHanja, daeKo: flow.daeKo,
       yearHanja: flow.yearHanja, yearKo: flow.yearKo
-    });
+    }, '대운 · ' + flow.daeHanja + ' · 올해 ' + flow.yearHanja);
 
     return out.slice(0, 3);
   }
@@ -697,6 +732,7 @@
     $('#cat-hanja').innerHTML = '<span class="han">' + p.hanja + '</span> · ' + esc(p.short);
     $('#cat-hanja').setAttribute('style', elVars(elem));
     $('#cat-def').textContent = tidy(p.def);
+    $('#cat-ten').textContent = tidy(p.tenLine);
     $('#cat-facts').innerHTML = p.facts.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('');
     $('#cat-tags').innerHTML = p.tags.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
     $('#cat-essay').innerHTML = hanjaize(p.essay);
@@ -1092,8 +1128,10 @@
     var art = ELEM_ART[elem];
 
     $('#paid-crumb').textContent = C.PAID.crumb;
+    $('#result-demo-note').textContent = C.PAID.demoShort;
     $('#result-call').textContent = fill(C.ui.call.long);
     $('#result-title').textContent = tidy(p.def);
+    $('#result-ten').textContent = tidy(p.tenLine);
     $('#bomb-text').textContent = tidy(p.bomb);
     $('#result-birth').innerHTML = birthLines(r, input).map(function (t) { return '<span>' + t + '</span>'; }).join('');
 
@@ -1118,7 +1156,8 @@
     r.themes.forEach(function (t, i) {
       html += entryHtml(pad(i + 1), {
         title: t.title,
-        term: i === 0 ? t.term : '',
+        term: '',
+        basis: t.basis,
         body: t.body,
         why: t.why || ''
       });
@@ -1128,19 +1167,28 @@
     // 팩폭 심층 · 성향 상세
     var m = r.master;
     var bp = C.ui.result.bonus.parts;
+    var godBasis = '일간 ' + r.dayMaster.short + ' · ' + r.palja.topGod + ' ' + r.palja.godCount +
+      (r.chart.dohwa ? ' · 도화' : '');
+    var elemBasis = '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' +
+      r.chart.strongest.count + '개(' + r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount;
+    var flowBasis = '일간 ' + r.dayMaster.short + ' · 일주 ' + r.chart.pillars.day.hanja +
+      ' · 대운 ' + flowAxis(r.chart).daeHanja;
     var deep = [
       {
         bonus: C.ui.result.bonus.label1,
         title: C.PAID.bombTitle,
+        basis: godBasis,
         parts: [
-          { label: bp.me, text: tidy(p.bomb) },
+          { label: bp.me, text: fill(m.selfSee, r.name) },
           { label: bp.blind, text: fill(m.selfBlind, r.name) },
-          { label: bp.first, text: fill(m.firstMet, r.name) }
+          { label: bp.first, text: fill(m.firstMet, r.name) },
+          { label: bp.strength, text: fill(m.gift, r.name) }
         ]
       },
       {
         bonus: C.ui.result.bonus.label2,
         title: C.PAID.traitTitle,
+        basis: elemBasis,
         tags: p.tags,
         parts: p.traits.map(function (tr) {
           return { label: tr.label, text: tr.text };
@@ -1151,9 +1199,11 @@
       {
         bonus: C.ui.result.bonus.label3,
         title: C.ui.result.bonus.title2,
+        basis: flowBasis,
         parts: [
           { label: bp.when, text: fill(m.love, r.name) },
           { label: bp.keep, text: fill(m.keep, r.name) },
+          { label: bp.now, text: fill(m.timing, r.name) },
           { label: bp.avoid, text: fill(m.avoidEnergy, r.name), warn: true }
         ]
       }
@@ -1170,6 +1220,7 @@
     $('#pattern-list').innerHTML = r.patterns.map(function (pt, i) {
       return '<li class="pattern"><span class="pattern__no">' + pad(i + 1) + '</span>' +
         '<span class="pattern__label">' + esc(pt.label) + '</span>' +
+        (pt.basis ? '<span class="pattern__basis">근거 — ' + hanjaize(pt.basis) + '</span>' : '') +
         '<p class="pattern__text">' + hanjaize(fill(pt.text, r.name)) + '</p>' +
         '<span class="pattern__cut"><b>' + C.PAID.patternCut + '</b>' + hanjaize(fill(pt.cut, r.name)) + '</span></li>';
     }).join('');
@@ -1203,6 +1254,13 @@
       '<div class="entry__head">' + head + '</div>';
 
     if (s.term) html += '<span class="entry__term">' + esc(s.term) + '</span>';
+
+    if (s.basis) {
+      var bits = String(s.basis).split(' · ').map(function (x) {
+        return '<span>' + hanjaize(x) + '</span>';
+      }).join('<i>·</i>');
+      html += '<p class="entry__basis"><b>여덟 글자 근거</b><span class="entry__basis-list">' + bits + '</span></p>';
+    }
 
     if (s.body) {
       html += '<p class="entry__text">' + hanjaize(s.body);
@@ -1351,13 +1409,14 @@
         var label = d.f.name.length > 4 ? d.f.name.slice(0, 4) + '…' : d.f.name;
         var ly = ny < cy ? ny - 20 : ny + 28;
         var on = state.selectedFriend === d.f.id ? ' is-on' : '';
-        nodes += '<g class="orbit__node orbit__node--' + k + on + '" data-friend-id="' + esc(d.f.id) + '"' +
-          ' tabindex="0" role="button" aria-label="' + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
+        var sampleMark = d.f.sample ? '예시 ' : '';
+        nodes += '<g class="orbit__node orbit__node--' + k + on + (d.f.sample ? ' orbit__node--sample' : '') + '" data-friend-id="' + esc(d.f.id) + '"' +
+          ' tabindex="0" role="button" aria-label="' + sampleMark + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="26" fill="transparent"/>' +
           '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="15"/>' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="4.4" fill="' + S.ELEM_COLOR[d.compat.youElem] + '"/>' +
           '<text class="orbit__node-name" x="' + nx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + esc(label) + '</text>' +
-          '<title>' + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' 관계</title>' +
+          '<title>' + sampleMark + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' 관계</title>' +
           '</g>';
       });
     });
@@ -1367,7 +1426,15 @@
       '나를 중심으로 한 인연 궤도. 1궤도 ' + byOrbit[1].length + '명, 2궤도 ' + byOrbit[2].length +
       '명, 3궤도 ' + byOrbit[3].length + '명.');
 
-    // 범례는 궤도가 아니라 관계 유형 다섯으로
+    // 예시로 그린 궤도인지 알린다 (친구를 올리면 내 궤도로 바뀐다)
+    var onlySamples = data.length > 0 && data.every(function (d) { return d.f.sample; });
+    var sampleNote = $('#orbit-sample-note');
+    if (sampleNote) {
+      sampleNote.hidden = !onlySamples;
+      sampleNote.textContent = onlySamples ? C.FREE.orbitSampleNote : '';
+    }
+
+    // 범례는 궤도가 아니라 관계 유형 다섯으로 — 유형마다 한 줄 설명을 함께
     var typeCount = {};
     data.forEach(function (d) {
       var k = d.compat.relation;
@@ -1376,14 +1443,15 @@
     $('#orbit-legend').innerHTML = ['gwiin', 'give', 'same', 'press', 'drain'].map(function (k) {
       var T = C.ORBIT_TYPE[k];
       return '<li class="orbit__leg orbit__leg--type orbit__leg--' + k + '"><i aria-hidden="true"></i>' +
-        '<b>' + T.name + '</b><em>' + (typeCount[k] || 0) + '명</em></li>';
+        '<b>' + T.name + '</b><em>' + (typeCount[k] || 0) + '명</em>' +
+        '<span class="orbit__leg-line">' + T.short + '</span></li>';
     }).join('');
 
     $('#orbit-list').innerHTML = data.length ? data.map(function (d) {
       var on = state.selectedFriend === d.f.id ? ' is-on' : '';
       return '<li class="orbit__item' + on + '">' +
         '<button type="button" class="orbit__pick" data-pick="' + esc(d.f.id) + '">' +
-        '<span class="orbit__item-name">' + esc(d.f.name) + (d.f.sample ? '<i>샘플</i>' : '') + '</span>' +
+        '<span class="orbit__item-name">' + esc(d.f.name) + (d.f.sample ? '<i>예시</i>' : '') + '</span>' +
         '<span class="orbit__item-meta">' + typeOf(d.compat).name + '</span>' +
         '</button>' +
         '<button type="button" class="orbit__remove" data-remove="' + esc(d.f.id) + '"' +
@@ -1417,7 +1485,7 @@
     box.innerHTML = data.map(function (d) {
       var it = orbitDetailParts(d);
       return '<li><div class="orbit__detail-top">' +
-        '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>샘플</i></i>' : '') + '</span>' +
+        '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>예시</i></i>' : '') + '</span>' +
         '<span class="orbit__detail-type">' + esc(it.type) + '</span></div>' +
         '<p class="orbit__detail-text">' + hanjaize(it.detail) + '</p>' +
         '<p class="orbit__detail-advice">' + hanjaize(it.advice) + '</p></li>';
@@ -1593,6 +1661,10 @@
       return;
     }
 
+    // 예시로 그려 둔 궤도는 첫 친구를 올리는 순간 내리해, 내 궤도로 바뀐다
+    if (state.friends.length && state.friends.every(function (f) { return f.sample; })) {
+      state.friends = [];
+    }
     state.friends.push(rec);
     saveFriends();
     state.selectedFriend = rec.id;
@@ -1621,6 +1693,9 @@
       name: inv.name, year: inv.year, month: inv.month, day: inv.day,
       hourIdx: inv.hourIdx, gender: inv.gender
     };
+    if (state.friends.length && state.friends.every(function (f) { return f.sample; })) {
+      state.friends = [];
+    }
     state.friends.push(rec);
     saveFriends();
     state.selectedFriend = rec.id;
@@ -1720,7 +1795,7 @@
     var btn = $('#btn-pay');
     if (btn.disabled) return;
     btn.disabled = true;
-    btn.textContent = PAY_LABEL[state.payMethod] + ' 연결 중이다';
+    btn.textContent = PAY_LABEL[state.payMethod] + ' 연결 중이에요';
 
     closePay();
 
