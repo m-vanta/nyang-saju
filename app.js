@@ -667,13 +667,25 @@
 
   function previewItems(r) {
     var order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
-    order.unshift(r.focusKey);
-    return order.map(function (k) {
+    var items = order.map(function (k) {
       var T = C.THEME[k];
       var base = firstSent(fill(r.master.focus[k], r.name), 1);
       var tail = firstSent(fillv(T.elem[r.palja.rel], r), 1);
       return { key: k, label: T.label, text: clip(base + ' ' + tail, 96) };
     });
+    // 올해 총운을 골랐을 때는 연애·재물·직업 대신 올해·타이밍을 먼저 보여 준다
+    if (r.focusKey === 'year') {
+      items.unshift({
+        key: 'year',
+        label: C.FOCUS.year.label,
+        text: clip(firstSent(fill(r.master.focus.year, r.name), 1) + ' ' +
+          firstSent(fill(r.master.timing, r.name), 1), 96)
+      });
+    } else {
+      var idx = order.indexOf(r.focusKey);
+      if (idx >= 0) items.unshift(items.splice(idx, 1)[0]);
+    }
+    return items;
   }
 
   // 결과 요약 복사 — 단톡방에 붙여도 도사의 말투가 남게

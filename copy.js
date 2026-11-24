@@ -488,7 +488,7 @@
     chartFoldClose: '접기',
     chartFoldNote: '명식과 오행은 무료로 다 보여 드려요. 오늘 천기의 중심은 위 고양이와 팩폭이에요.',
 
-    previewTitle: '먼저 맛보기 — 연애 · 재물 · 직업운',
+    previewTitle: '먼저 맛보기 — 고른 운세부터',
     previewSub: '세 운을 한 줄씩만 미리 보여 드려요. 전체 풀이는 복채 1,900원이에요.',
     previewMore: '복채 1,900원으로 전체 풀이 보기',
 
