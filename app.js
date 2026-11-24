@@ -1,13 +1,18 @@
 /* ==========================================================================
    냥도사의 천기누설 · 앱 UI (app.js)
-   상태 / 티저 블러 / 데모 결제 / 천기 부적 카드(Canvas) / 공유
-   - 문장은 전부 copy.js(NyangCopy)에서, 사주 계산은 saju.js(NyangSaju)에서
+   --------------------------------------------------------------------------
+   화면 셋 : 입력 → 무료 천기(팔자 고양이) → 유료 천기(1,900원)
+   계산은 saju.js(NyangSaju), 팔자 고양이는 palja.js(NyangPalja),
+   문장은 copy.js(NyangCopy), 사건은 analytics.js(NyangAnalytics).
    ========================================================================== */
 (function () {
   'use strict';
 
   var S = window.NyangSaju;
   var C = window.NyangCopy;
+  var P = window.NyangPalja;
+  var AN = window.NyangAnalytics;
+
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
@@ -20,47 +25,31 @@
     input: null,
     paid: false,
     canvasReady: false,
+    shareReady: false,
     friends: [],
     friendGender: '여성',
     invite: null,
-    selectedFriend: null
+    selectedFriend: null,
+    shareInvite: false,
+    inputStarted: false
   };
 
   var PAY_LABEL = { kakaopay: '카카오페이', tosspay: '토스페이', card: '신용카드' };
 
   /* --- 물상(物象) 아이콘 · 일러스트 매핑 -------------------------------- */
 
-  // 천간 10자 → 물상 아이콘 + 짧은 이름
   var MU_STEM = [
-    ['mu-tree', '큰나무'],
-    ['mu-vine', '꽃·덩굴'],
-    ['mu-sun', '태양'],
-    ['mu-candle', '촛불'],
-    ['mu-mountain', '큰 산'],
-    ['mu-field', '기름진 밭'],
-    ['mu-rock', '바위·쇠'],
-    ['mu-gem', '보석'],
-    ['mu-sea', '큰 바다'],
-    ['mu-rain', '비·이슬']
+    ['mu-tree', '큰나무'], ['mu-vine', '꽃·덩굴'], ['mu-sun', '태양'], ['mu-candle', '촛불'],
+    ['mu-mountain', '큰 산'], ['mu-field', '기름진 밭'], ['mu-rock', '바위·쇠'], ['mu-gem', '보석'],
+    ['mu-sea', '큰 바다'], ['mu-rain', '비·이슬']
   ];
 
-  // 지지 12자 → 띠 동물 아이콘 + 물상
   var MU_BRANCH = [
-    ['mb-rat', '쥐'],
-    ['mb-ox', '소'],
-    ['mb-tiger', '호랑이'],
-    ['mb-rabbit', '토끼'],
-    ['mb-dragon', '용'],
-    ['mb-snake', '뱀'],
-    ['mb-horse', '말'],
-    ['mb-sheep', '양'],
-    ['mb-monkey', '원숭이'],
-    ['mb-rooster', '닭·보석'],
-    ['mb-dog', '개'],
-    ['mb-pig', '돼지']
+    ['mb-rat', '쥐'], ['mb-ox', '소'], ['mb-tiger', '호랑이'], ['mb-rabbit', '토끼'],
+    ['mb-dragon', '용'], ['mb-snake', '뱀'], ['mb-horse', '말'], ['mb-sheep', '양'],
+    ['mb-monkey', '원숭이'], ['mb-rooster', '닭·보석'], ['mb-dog', '개'], ['mb-pig', '돼지']
   ];
 
-  // 일간(천간 index) → 오행
   var STEM_ELEM = ['목', '목', '화', '화', '토', '토', '금', '금', '수', '수'];
 
   // 오행별 고양이 일러스트 (화투 × 콩눈 펜선)
@@ -73,7 +62,7 @@
   };
 
   /* ------------------------------------------------------------------ */
-  /* 1. 초기화                                                          */
+  /* 0. 초기화                                                          */
   /* ------------------------------------------------------------------ */
 
   function init() {
@@ -81,15 +70,30 @@
     buildOrbitSelects();
     bindSegments();
     bindFocus();
-    bindTeaserCta();
+    bindInputStart();
     bindForm();
-    bindPayment();
-    bindResultActions();
     bindMenu();
+    bindFreeCta();
+    bindPayment();
     bindOrbit();
+    bindShare();
+    bindResultActions();
     syncDays();
     state.friends = loadFriends();
     parseInvite();
+    renderValueList();
+    trackPageView();
+  }
+
+  function trackPageView() {
+    var q = null;
+    try { q = new URLSearchParams(location.search); } catch (e) { q = null; }
+    AN.track('page_view', {
+      inviter: (q && q.get('inviter')) || null,
+      inviteLanded: !!state.invite,
+      referrer: document.referrer || null,
+      paid: false
+    });
   }
 
   /* {name} 님 → '민지 님' (이름이 없으면 '손님'). '당신'은 어디에도 남기지 않는다 */
@@ -104,6 +108,19 @@
       .replace(/\{name\}/g, callName(nameArg));
   }
 
+  /* 팔자 고양이·분포 수치까지 채우는 치환 (유료 운 풀이·패턴에서 씀) */
+  function fillv(s, r) {
+    var p = (r || state.reading || {}).palja;
+    if (!p) return fill(s);
+    return fill(String(s == null ? '' : s))
+      .replace(/\{strongKo\}/g, p.strongKo)
+      .replace(/\{lackKo\}/g, p.lackKo || '')
+      .replace(/\{pct\}/g, p.pct != null ? p.pct : (r.chart.strongest.pct))
+      .replace(/\{count\}/g, r.chart.strongest.count)
+      .replace(/\{god\}/g, p.topGod)
+      .replace(/\{n\}/g, p.godCount);
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -114,7 +131,7 @@
 
   // 본문 속 한자(甲木·癸水)는 명조로 — 타이포 규칙: 한자만 Song Myung
   var HANJA_RUN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g;
-  // 받침에 맞춰 조사를 붙인다 (나무가 / 흙이, 겁재는 / 정관은)
+
   function hasJong(word) {
     var c = word.charCodeAt(word.length - 1);
     if (c < 0xAC00 || c > 0xD7A3) return false;
@@ -127,11 +144,6 @@
 
   function josa(word, pair) {
     return word + josaOf(word, pair);
-  }
-
-  // '이다 / 다' — 받침에 따라 (경금이다 / 계수다)
-  function copula(word) {
-    return josaOf(word, '이가') === '이' ? '이다' : '다';
   }
 
   // 곧은 따옴표(")를 여는·닫는 따옴표로 — 한국어 본문에서 훨씬 읽힌다
@@ -147,6 +159,28 @@
   function hanjaize(s) {
     return tidy(String(s)).replace(HANJA_RUN, function (m) { return '<span class="han">' + m + '</span>'; });
   }
+
+  // 앞 문장 몇 개만 (미리보기 1~2줄)
+  function firstSent(text, max) {
+    var t = tidy(text).replace(/\s+/g, ' ').trim();
+    var parts = t.match(/[^.!?]+[.!?]?/g) || [t];
+    var out = '';
+    for (var i = 0; i < parts.length && i < max; i++) out += parts[i];
+    return out.trim();
+  }
+
+  function clip(text, max) {
+    var t = String(text);
+    return t.length > max ? t.slice(0, max).replace(/\s+\S*$/, '') + ' …' : t;
+  }
+
+  function elVars(elem) {
+    return '--el:' + S.ELEM_COLOR[elem] + ';--el-ink:' + S.ELEM_INK[elem] + ';--el-soft:' + S.ELEM_SOFT[elem];
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 1. 폼 · 입력                                                       */
+  /* ------------------------------------------------------------------ */
 
   function bindMenu() {
     var toggles = $$('[data-menu-toggle]');
@@ -182,6 +216,9 @@
         var item = e.target.closest('.menu__item');
         if (!item) return;
         closeAll(null);
+        var act = item.getAttribute('data-action');
+        if (act === 'back-input') show('screen-input');
+        if (act === 'back-free') backToFree();
         var note = item.getAttribute('data-menu-note');
         if (note === 'pay') toast(C.ui.menu.payToast);
         if (note === 'fun') toast(C.ui.menu.funToast);
@@ -259,21 +296,40 @@
       btn.classList.add('is-on');
       var v = btn.getAttribute('data-value');
       state.focus = C.FOCUS[v] ? v : 'love';
+      $('#value-focus').textContent = valueFocusLine();
     });
   }
 
-  // 티저 고정 바: 첫 화면에서는 무료 천기팩폭을 가리지 않도록, 스크롤한 뒤에만 띄운다
-  function bindTeaserCta() {
+  // 퍼널 2번: 폼을 처음 건드린 순간 한 번만
+  function bindInputStart() {
+    function once(field) {
+      if (state.inputStarted) return;
+      state.inputStarted = true;
+      AN.track('input_start', { field: field, focus: state.focus });
+    }
+    ['name', 'year', 'month', 'day', 'hour'].forEach(function (id) {
+      var el = $('#' + id);
+      if (!el) return;
+      el.addEventListener('focus', function () { once(id); });
+      el.addEventListener('change', function () { once(id); });
+    });
+    $$('.seg, .status').forEach(function (el) {
+      el.addEventListener('click', function () { once('chip'); });
+    });
+  }
+
+  // 무료 화면 고정 바: 첫 화면에서는 팩폭을 가리지 않도록, 스크롤한 뒤에만 띄운다
+  function bindFreeCta() {
     var app = $('#app');
     app.addEventListener('scroll', function () {
-      if (!document.body.classList.contains('is-teaser')) return;
-      document.body.classList.toggle('is-teaser-scrolled', app.scrollTop > 90);
+      if (!document.body.classList.contains('is-free')) return;
+      document.body.classList.toggle('is-free-scrolled', app.scrollTop > 120);
     }, { passive: true });
   }
 
   function bindForm() {
-    $('#year').addEventListener('change', syncDays);
-    $('#month').addEventListener('change', syncDays);
+    $('#year').addEventListener('change', function () { syncDays(); });
+    $('#month').addEventListener('change', function () { syncDays(); });
     $('#isLeap').addEventListener('change', function () { syncDays({ keepLeap: true }); });
     $('#form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -324,9 +380,16 @@
   function show(id) {
     $$('.screen').forEach(function (s) { s.classList.toggle('is-active', s.id === id); });
     $$('[data-menu]').forEach(function (m) { m.hidden = true; });
-    document.body.classList.toggle('is-teaser', id === 'screen-teaser');
-    document.body.classList.remove('is-teaser-scrolled');
+    document.body.classList.toggle('is-free', id === 'screen-free');
+    document.body.classList.toggle('is-paid', id === 'screen-result');
+    document.body.classList.remove('is-free-scrolled');
     $('#app').scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  function backToFree() {
+    if (!state.reading) { show('screen-input'); return; }
+    if (state.paid) renderOrbit();
+    show('screen-free');
   }
 
   function toast(msg) {
@@ -338,7 +401,7 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 3. 제출 → 티저                                                     */
+  /* 3. 제출 → 무료 천기                                                */
   /* ------------------------------------------------------------------ */
 
   function collect() {
@@ -372,8 +435,18 @@
     state.reading = r;
     state.input = input;
     state.paid = false;
-    renderTeaser(r, input);
-    show('screen-teaser');
+    state.selectedFriend = null;
+    renderFree(r, input);
+    show('screen-free');
+
+    AN.track('free_result_view', {
+      dayMaster: r.dayMaster.short,
+      dayMasterIdx: r.chart.dayMaster,
+      cat: r.palja.name,
+      chars: r.chart.total,
+      focus: r.focusKey,
+      inviteLanded: !!state.invite
+    });
   }
 
   function birthLines(r, input) {
@@ -394,11 +467,253 @@
     return cal + ' · ' + h + ' · ' + r.focus.label;
   }
 
-  /* --- 사주명식 카드 ------------------------------------------------- */
+  /* ------------------------------------------------------------------ */
+  /* 3-1. 천기 조립 — 만세력 결과 + 팔자 고양이 + copy.js               */
+  /* ------------------------------------------------------------------ */
 
-  function elVars(elem) {
-    return '--el:' + S.ELEM_COLOR[elem] + ';--el-ink:' + S.ELEM_INK[elem] + ';--el-soft:' + S.ELEM_SOFT[elem];
+  function buildReading(chart, input) {
+    var m = C.MASTER[chart.dayMaster];
+    var focusKey = C.FOCUS[input.focus] ? input.focus : 'love';
+    var elemKo = STEM_ELEM[chart.dayMaster];
+    var dmName = S.STEMS[chart.dayMaster] + elemKo;
+    var dmHanja = S.STEMS_HANJA[chart.dayMaster] + S.ELEM_HANJA[elemKo];
+    var name = (input.name || '').trim() || '손님';
+    var timing = S.loveTiming(chart, Date.now());
+
+    var r = {
+      name: name,
+      callName: name === '손님' ? '손님' : name + ' 님',
+      chart: chart,
+      master: m,
+      focusKey: focusKey,
+      focus: C.FOCUS[focusKey],
+      dayMaster: { name: dmName + '(' + dmHanja + ')', short: dmName, hanja: dmHanja, elem: elemKo },
+      timing: timing,
+      timingText: timing ? S.fmtDate(timing.startMs) + ' ~ ' + S.fmtDate(timing.endMs) : null
+    };
+
+    r.palja = P.build(chart, name);
+    r.palja.pct = chart.strongest.pct;
+    r.themes = themeSections(r);
+    r.patterns = buildPatterns(r);
+    r.summary = buildSummary(r);
+    return r;
   }
+
+  /* --- 유료 : 세 가지 운 (고른 운세부터) ----------------------------- */
+
+  function themeSections(r) {
+    var out = [];
+    var order;
+    if (r.focusKey === 'year') {
+      out.push({
+        key: 'year',
+        title: '올해 총운',
+        term: '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count +
+          '개(' + r.palja.pct + '%)',
+        body: fill(r.master.focus.year, r.name),
+        why: r.timingText || ''
+      });
+      order = ['love', 'money', 'work'];
+    } else {
+      order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
+      order.unshift(r.focusKey);
+    }
+    order.forEach(function (k) {
+      var T = C.THEME[k];
+      var body = fill(r.master.focus[k], r.name) + ' ' +
+        fillv(T.elem[r.palja.rel], r) + ' ' + fillv(T.god[r.palja.group], r);
+      out.push({
+        key: k,
+        title: T.label,
+        kicker: T.kicker,
+        term: r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count + '개(' +
+          r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount,
+        body: body
+      });
+    });
+    return out;
+  }
+
+  /* --- 유료 : 반복되는 인생 패턴 3개 --------------------------------- */
+
+  function buildPatterns(r) {
+    var out = [];
+    function add(pt) {
+      if (!pt) return;
+      out.push({ label: pt.label, text: fillv(pt.text, r), cut: fillv(pt.cut, r) });
+    }
+    add(C.PATTERN.god[r.palja.group]);
+    add(C.PATTERN.elem[r.palja.rel]);
+    add(r.chart.lacking.length ? C.PATTERN.lack : C.PATTERN.solid);
+    return out.slice(0, 3);
+  }
+
+  /* --- 무료 : 연애·재물·직업운 미리보기 (1~2줄) ---------------------- */
+
+  function previewItems(r) {
+    return ['love', 'money', 'work'].map(function (k) {
+      var T = C.THEME[k];
+      var base = firstSent(fill(r.master.focus[k], r.name), 1);
+      var tail = firstSent(fillv(T.elem[r.palja.rel], r), 1);
+      return { key: k, label: T.label, text: clip(base + ' ' + tail, 96) };
+    });
+  }
+
+  // 결과 요약 복사 — 단톡방에 붙여도 도사의 말투가 남게
+  function buildSummary(r) {
+    var p = r.chart.pillars;
+    var m = r.master;
+    var line = function (pl) { return pl ? pl.ko + '(' + pl.hanja + ')' : '시주 모름'; };
+    var L = [];
+    L.push('냥도사의 천기누설 — ' + r.name);
+    L.push('팔자 고양이: ' + r.palja.name + ' (' + r.palja.hanja + ' · ' + r.palja.short + ')');
+    L.push('한 줄 정의: ' + r.palja.def);
+    L.push('사주명식: ' + line(p.year) + ' · ' + line(p.month) + ' · ' + line(p.day) + ' · ' + line(p.hour));
+    L.push('오행: ' + r.chart.dist.map(function (d) { return d.elem + d.count + '개(' + d.pct + '%)'; }).join(' '));
+    L.push('');
+    L.push(fill(r.palja.bomb, r.name));
+    L.push('');
+    r.themes.forEach(function (t) {
+      L.push('[' + t.title + ']');
+      L.push(fill(t.body, r.name));
+      L.push('');
+    });
+    L.push('[반복되는 인생 패턴]');
+    r.patterns.forEach(function (pt) {
+      L.push('· ' + pt.label + ': ' + fill(pt.text, r.name) + ' → ' + fill(pt.cut, r.name));
+    });
+    L.push('');
+    L.push('· ' + C.ui.result.talismanTitle + ': ' + fill(m.talisman, r.name));
+    L.push('');
+    L.push('냥도사가 봤어요. 재미로 보세요.');
+    return tidy(L.join('\n'));
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 4. 무료 화면 렌더                                                   */
+  /* ------------------------------------------------------------------ */
+
+  function renderFree(r, input) {
+    var p = r.palja;
+    var elem = r.dayMaster.elem;
+    var art = ELEM_ART[elem];
+
+    $('#free-crumb').textContent = C.FREE.crumb;
+    $('#cat-kicker').textContent = fill(C.FREE.kicker);
+    $('#cat-kicker').setAttribute('data-for', r.name);
+
+    var img = $('#cat-art');
+    img.onerror = function () {
+      img.onerror = null;
+      img.src = 'public/cat-' + art.slug + '-ink.png';
+    };
+    img.src = 'public/cat-' + art.slug + '-ink.webp';
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
+
+    $('#cat-no').textContent = pad(r.chart.dayMaster + 1);
+    $('#cat-name').textContent = p.name;
+    $('#cat-hanja').innerHTML = '<span class="han">' + p.hanja + '</span> · ' + esc(p.short);
+    $('#cat-hanja').setAttribute('style', elVars(elem));
+    $('#cat-def').textContent = tidy(p.def);
+    $('#cat-facts').innerHTML = p.facts.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('');
+    $('#cat-tags').innerHTML = p.tags.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
+    $('#cat-essay').innerHTML = hanjaize(p.essay);
+    $('#free-bomb').textContent = tidy(p.bomb);
+
+    // 대표 성향 3
+    $('#traits-sub').textContent = C.FREE.traitsSub;
+    $('#traits-list').innerHTML = p.traits.map(function (t) {
+      return '<li class="trait"><span class="trait__no">' + t.no + '</span>' +
+        '<span class="trait__label">' + esc(t.label) + '</span>' +
+        '<p class="trait__text">' + hanjaize(t.text) + '</p></li>';
+    }).join('');
+
+    // 사주명식 · 오행 (접기)
+    $('#fold-chart-line').innerHTML = foldLine(r.chart);
+    $('#fold-toggle-text').textContent = C.FREE.chartFoldOpen;
+    renderPillars($('#pillars'), r.chart);
+    $('#free-meta').textContent = metaLine(r.chart);
+    $('#free-myeong-foot').innerHTML = myeongFoot(r.chart, false, r.name);
+    $('#free-oheng-badge').textContent = '일간 ' + r.dayMaster.short;
+    renderOheng($('#oheng'), r.chart);
+    renderCycle($('#cycle'), r.chart, r.name);
+    $('#fold-note').textContent = C.FREE.chartFoldNote;
+
+    // 운 미리보기
+    $('#preview-sub').textContent = C.FREE.previewSub;
+    $('#preview-list').innerHTML = previewItems(r).map(function (it) {
+      return '<li class="preview__item">' +
+        '<div class="preview__top"><span class="preview__label">' + esc(it.label) + '</span>' +
+        '<span class="preview__chip">' + C.FREE.lockTag + '</span></div>' +
+        '<p class="preview__text">' + hanjaize(it.text) + '</p></li>';
+    }).join('');
+    $('#preview-lock').textContent = C.FREE.previewMore;
+
+    // 1,900원으로 열리는 것
+    $('#value-focus').textContent = valueFocusLine();
+    $('#value-note').textContent = C.FREE.valueNote;
+
+    // 무료 결과 카드
+    $('#share-sub').textContent = C.FREE.shareSub;
+    $('#share-invite-label').textContent = C.FREE.shareInvite;
+    $('#share-invite-hint').textContent = fill(C.FREE.shareInviteHint);
+    $('#btn-share-save').textContent = C.FREE.shareSave;
+    $('#btn-share-share').textContent = C.FREE.shareShare;
+    $('#btn-share-share').hidden = !canShareFiles();
+    state.shareInvite = false;
+    $('#share-invite').checked = false;
+    drawShareCard(r);
+
+    // 인연 궤도 (무료)
+    $('#orbit-kicker').textContent = C.FREE.orbitKicker;
+    $('#orbit-sub').textContent = C.FREE.orbitSub;
+    $('#orbit-type-kicker').textContent = C.FREE.orbitTypeKicker;
+    $('#orbit-lock').textContent = C.FREE.orbitLock;
+    $('#orbit-invite-hint').textContent = fill(C.orbit.inviteHint);
+    $('#btn-invite').textContent = C.orbit.inviteBtn;
+    $('#btn-invite-share').hidden = !canShareFiles();
+    renderOrbit();
+  }
+
+  function valueFocusLine() {
+    var label = (C.FOCUS[state.focus] || C.FOCUS.love).label;
+    return C.FREE.valueFocus.replace('{focus}', label);
+  }
+
+  // 1,900원으로 열리는 다섯 가지 — 무료 화면 목록·결제 시트·유료 체크리스트
+  function renderValueList() {
+    var rows = C.VALUE.map(function (v) {
+      return '<li class="value__item"><span class="value__no">' + v.no + '</span>' +
+        '<span class="value__title">' + esc(v.title) + '</span>' +
+        '<p class="value__desc">' + esc(v.desc) + '</p></li>';
+    }).join('');
+    var box = $('#value-list');
+    if (box) box.innerHTML = rows;
+  }
+
+  function foldLine(chart) {
+    var out = [];
+    ['year', 'month', 'day', 'hour'].forEach(function (k) {
+      var p = chart.pillars[k];
+      if (!p) {
+        out.push('<span class="fold__pillar" style="color:var(--ink-3)">?</span>');
+        return;
+      }
+      out.push('<span class="fold__pillar">' +
+        '<span style="color:' + S.ELEM_INK[p.stemElem] + '">' + S.STEMS_HANJA[p.stem] + '</span>' +
+        '<span style="color:' + S.ELEM_INK[p.branchElem] + '">' + S.BRANCHES_HANJA[p.branch] + '</span>' +
+        '</span>');
+    });
+    var counts = chart.dist.map(function (d) {
+      return '<span class="fold__elem" data-el="' + d.elem + '" style="' + elVars(d.elem) + '">' +
+        '<span class="han">' + d.hanja + '</span> ' + d.count + '</span>';
+    }).join('');
+    return '<span>일간 ' + chart.dayMasterName + '</span><span>·</span>' +
+      out.join('') + '<span>·</span>' + counts;
+  }
+
+  /* --- 사주명식 카드 ------------------------------------------------- */
 
   function tenChip(ten, elem, isSelf) {
     if (isSelf) return '<span class="pillar__ten pillar__ten--self">' + C.ui.chart.self + '</span>';
@@ -439,26 +754,32 @@
     }).join('');
   }
 
-  /* --- 오행 분포: 100% 누적 바 + 범례 ------------------------------- */
+  /* --- 오행 분포: 개수 + 100% 누적 바 + 범례 ------------------------- */
+
+  function elemCountsLine(chart) {
+    return chart.dist.map(function (d) { return S.ELEM_HANJA[d.elem] + d.count; }).join(' · ');
+  }
 
   function renderOheng(target, chart) {
     var bar = chart.dist.map(function (d) {
       if (d.pct <= 0) return '';
-      var txt = d.pct >= 15 ? S.ELEM_HANJA[d.elem] + ' ' + d.pct + '%' : '';
+      var txt = d.pct >= 18 ? S.ELEM_HANJA[d.elem] + ' ' + d.count + ' · ' + d.pct + '%' : '';
       return '<span class="oheng__seg" data-el="' + d.elem + '" style="flex:0 0 ' + d.pct + '%;' + elVars(d.elem) + '">' + txt + '</span>';
     }).join('');
 
     var legend = chart.dist.map(function (d) {
       return '<li' + (d.count === 0 ? ' class="is-none"' : '') + ' data-el="' + d.elem + '" style="' + elVars(d.elem) + '">' +
         '<span class="oheng__name"><span class="oheng__hanja">' + d.hanja + '</span> ' + d.elem + '</span>' +
-        '<span class="oheng__pct"><i></i><b>' + d.pct + '%</b></span></li>';
+        '<span class="oheng__pct"><i></i><b>' + d.count + '개</b><em>' + d.pct + '%</em></span></li>';
     }).join('');
 
-    var label = '오행 분포 ' + chart.dist.map(function (d) { return d.elem + ' ' + d.pct + '%'; }).join(', ');
+    var label = '오행 분포 ' + chart.dist.map(function (d) {
+      return d.elem + ' ' + d.count + '개 ' + d.pct + '%';
+    }).join(', ');
     target.innerHTML =
       '<div class="oheng__bar" role="img" aria-label="' + label + '">' + bar + '</div>' +
       '<ul class="oheng__legend">' + legend + '</ul>' +
-      '<p class="oheng__note">' + charWord(chart) + ' 균등 가중 · 합 100%</p>';
+      '<p class="oheng__note">' + charWord(chart) + ' 균등 가중 · ' + elemCountsLine(chart) + ' · 합 100%</p>';
   }
 
   /* --- 오행도: 바깥 원 상생 화살표 + 안쪽 오각별 상극 화살표 --------- */
@@ -533,7 +854,7 @@
         arrowHead(tx, ty, ux, uy, head, color, op);
     });
 
-    // --- 오행 다섯 원 (한자 + 한글 + 비율), 센 기운은 더 크고 굵게
+    // --- 오행 다섯 원 (한자 + 한글·개수·비율), 센 기운은 더 크고 굵게
     var nodes = order.map(function (e) {
       var n = node[e], d = n.d;
       var dark = e === '목' || e === '화' || e === '수';
@@ -545,6 +866,7 @@
       var halo = isTop
         ? '<circle cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" r="' + (n.r + 5).toFixed(1) + '" fill="none" stroke="' + S.ELEM_COLOR[e] + '" stroke-width="1.2" opacity="0.45"/>'
         : '';
+      var sub = d.count === 0 ? C.ui.oheng.cycleNone : d.ko + d.count + ' ' + d.pct + '%';
       return '<g' + (d.count === 0 ? ' opacity="0.5"' : '') + '>' + halo +
         '<circle cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" r="' + n.r.toFixed(1) + '"' +
         ' fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"' +
@@ -552,14 +874,13 @@
         '<text x="' + n.x.toFixed(1) + '" y="' + (n.y - 1).toFixed(1) + '" text-anchor="middle" fill="' + txt + '"' +
         ' font-family="\'Song Myung\', serif" font-weight="700" font-size="' + (isTop ? 22 : 20) + '">' + d.hanja + '</text>' +
         '<text x="' + n.x.toFixed(1) + '" y="' + (n.y + 17).toFixed(1) + '" text-anchor="middle" fill="' + txt + '"' +
-        ' font-family="\'Paperlogy\', sans-serif" font-weight="700" font-size="12">' +
-        (d.count === 0 ? C.ui.oheng.cycleNone : d.ko + ' ' + d.pct + '%') + '</text>' +
+        ' font-family="\'Paperlogy\', sans-serif" font-weight="700" font-size="12">' + sub + '</text>' +
         '</g>';
     }).join('');
 
-    var dmHan = S.ELEM_HANJA[STEM_ELEM[chart.dayMaster]];
     var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="오행 상생상극도. ' +
-      chart.dist.map(function (d) { return d.elem + ' ' + d.pct + '%'; }).join(', ') + '. 바깥 원은 상생, 안쪽 별은 상극입니다.">' +
+      chart.dist.map(function (d) { return d.elem + ' ' + d.count + '개 ' + d.pct + '%'; }).join(', ') +
+      '. 바깥 원은 상생, 안쪽 별은 상극이에요.">' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#1E1A17" stroke-width="0.8" stroke-dasharray="2 7" opacity="0.35"/>' +
       killLayer + makeLayer + nodes +
       '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="' + S.ELEM_COLOR[STEM_ELEM[chart.dayMaster]] + '" stroke="#1E1A17" stroke-width="1.2"/>' +
@@ -573,7 +894,7 @@
       '<p class="cycle__note">' + cycleNote(chart, name) + '</p>';
   }
 
-  // 오행도 아래 한 줄 — 무엇이 많고, 무엇을 살리고, 무엇에 눌리는지
+  // 오행도 아래 한 줄 — 무엇이 몇 개로 많고, 무엇을 살리고, 무엇에 눌리는지
   function cycleNote(chart, nameArg) {
     var who = callName(nameArg) + ' 안엔 ';
     var t = chart.strongest;
@@ -585,30 +906,29 @@
     if (chart.dominant.length > 1) {
       var many = chart.dominant.map(function (e) { return S.ELEM_KO[e]; });
       var numKo = { 2: '둘', 3: '셋', 4: '넷', 5: '다섯' }[many.length] || '여럿';
-      s = who + many.join('·') + ' ' + numKo + '이 나란히 ' + t.pct + '%로 제일 많아요. 그중 ' +
+      s = who + many.join('·') + ' ' + numKo + '이 나란히 ' + t.count + '개(' + t.pct + '%)로 제일 많아요. 그중 ' +
         josa(mine, '을를') + ' 기준으로 보면, ' + josa(mine, '은는') + ' ' + josa(makes, '을를') +
-        ' 살리고 ' + josa(kills, '을를') + ' 누릅니다. 반대로 ' + killed + '한테 눌리지요.';
+        ' 살리고 ' + josa(kills, '을를') + ' 눌러요. 반대로 ' + killed + '한테 눌리죠.';
     } else {
-      s = who + josa(mine, '이가') + ' 제일 많아요. ' + t.pct + '%입니다. ' +
-        josa(mine, '은는') + ' ' + josa(makes, '을를') + ' 살리고 ' + josa(kills, '을를') + ' 누릅니다. 반대로 ' +
-        killed + '한테 눌리지요.';
+      s = who + josa(mine, '이가') + ' ' + t.count + '개로 제일 많아요. ' + t.pct + '%예요. ' +
+        josa(mine, '은는') + ' ' + josa(makes, '을를') + ' 살리고 ' + josa(kills, '을를') + ' 눌러요. 반대로 ' +
+        killed + '한테 눌리죠.';
     }
     if (chart.lacking.length) {
       var lackKo = S.ELEM_KO[chart.lacking[chart.lacking.length - 1]];
       s += ' ' + chart.lacking.map(function (e) { return S.ELEM_KO[e] + '(' + S.ELEM_HANJA[e] + ')'; }).join('·') +
-        josaOf(lackKo, '은는') + ' 아예 안 들어왔어요. 그 자리는 비어 있는 채로 살아갑니다.';
+        josaOf(lackKo, '은는') + ' 0개, 아예 안 들어왔어요. 그 자리는 비어 있는 채로 살아가요.';
     }
     return s;
   }
-
-  /* --- 명식 해설 (십신 · 12운성 · 지장간 · 대운) --------------------- */
 
   function charWord(chart) {
     return chart.total === 6 ? '여섯 글자' : '여덟 글자';
   }
 
   function metaLine(chart) {
-    return '일간 ' + chart.dayMasterName + ' · ' + chart.strongest.elem + ' ' + chart.strongest.pct + '%';
+    return '일간 ' + chart.dayMasterName + ' · ' + S.ELEM_KO[chart.strongest.elem] + ' ' +
+      chart.strongest.count + '개(' + chart.strongest.pct + '%)';
   }
 
   function tenList(chart) {
@@ -623,56 +943,51 @@
     var t = chart.strongest;
     var han = function (x) { return '<span class="han">' + x + '</span>'; };
 
-    // 1) 일간 + 기운의 세기 (동점이면 나란히)
     var tops = chart.dominant;
     var topTxt = tops.map(function (e) { return S.ELEM_KO[e]; }).join('·');
-    var line1 = who + '의 중심은 ' + han(chart.dayMasterHanja) + '(' + chart.dayMasterName + ')입니다. ' +
-      charWord(chart) + ' 중 ' + josa(topTxt, '이가') + ' <b>' + t.pct + '%</b>로 제일 세고';
+    var line1 = who + '의 중심은 ' + han(chart.dayMasterHanja) + '(' + chart.dayMasterName + ')이에요. ' +
+      charWord(chart) + ' 중 ' + josa(topTxt, '이가') + ' <b>' + t.count + '개(' + t.pct + '%)</b>로 제일 세고';
     if (chart.lacking.length) {
       var lackKo1 = S.ELEM_KO[chart.lacking[chart.lacking.length - 1]];
       line1 += ', ' + chart.lacking.map(function (e) { return S.ELEM_KO[e]; }).join('·') + josaOf(lackKo1, '은는') + ' 하나도 없어요.';
     } else {
       var weak = chart.dist.slice().sort(function (a, b) { return a.count - b.count; })[0];
-      line1 += ', ' + josa(S.ELEM_KO[weak.elem], '이가') + ' <b>' + weak.pct + '%</b>로 제일 얇아요.';
+      line1 += ', ' + josa(S.ELEM_KO[weak.elem], '이가') + ' ' + weak.count + '개(' + weak.pct + '%)로 제일 얇아요.';
     }
     out.push('<p>' + line1 + '</p>');
 
     if (full) {
-      // 2) 십신
       var list = tenList(chart);
       var head = list.slice(0, 3).map(function (x) { return x.t + ' ' + x.n; }).join(' · ');
       var gl = list.slice(0, 2).map(function (x) {
         return '<b>' + x.t + '</b>' + josaOf(x.t, '은는') + ' ' + S.TEN_GROUP[x.t];
       }).join(', ');
-      out.push('<p>드러난 십신은 ' + head + ' 순서예요. ' + gl + '. 그게 ' + who + ' 판에서 제일 크게 도는 기운입니다.</p>');
-      out.push('<p>카드 위 작은 글씨는 12운성입니다. 그 자리에서 ' + who + ' 기운이 얼마나 센지 보는 눈금이지요. 제왕·건록이면 그 자리가 세고, 병·사·절이면 기운이 빠져 있는 자리예요.</p>');
+      out.push('<p>드러난 십신은 ' + head + ' 순서예요. ' + gl + '. 그게 ' + who + ' 판에서 제일 크게 도는 기운이에요.</p>');
+      out.push('<p>카드 위 작은 글씨는 12운성이에요. 그 자리에서 ' + who + ' 기운이 얼마나 센지 보는 눈금이죠. 제왕·건록이면 그 자리가 세고, 병·사·절이면 기운이 빠져 있는 자리예요.</p>');
 
-      // 3) 지장간
       if (chart.hiddenElems.length) {
         out.push('<p>' + C.ui.chart.hiddenHas.replace('{elems}',
           chart.hiddenElems.map(function (e) { return S.ELEM_KO[e] + '(' + S.ELEM_HANJA[e] + ')'; }).join('·')) + '</p>');
       } else {
         out.push('<p>' + (chart.total === 6
-          ? '시주를 모른다고 숨은 기운까지 없는 건 아니에요. 여섯 글자만으로 본 결과입니다.'
+          ? '시주를 모른다고 숨은 기운까지 없는 건 아니에요. 여섯 글자만으로 본 결과예요.'
           : C.ui.chart.hiddenNone) + '</p>');
       }
 
-      // 4) 대운
       var dw = chart.daewoon;
       if (dw && dw.list.length) {
         var cur = dw.current;
         var next = dw.list.filter(function (d) { return d.age > (cur ? cur.age : 0); })[0];
-        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '입니다. ' + dw.startAge + '세에 ' + dw.list[0].ko + '로 열렸고, ';
+        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '이에요. ' + dw.startAge + '세에 ' + dw.list[0].ko + '로 열렸고, ';
         if (cur) {
           s2 += '지금은 <b>' + cur.ko + '</b> 구간(' + cur.age + '~' + (cur.age + 9) + '세)이에요.';
-          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '입니다.';
+          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '이에요.';
         } else {
           s2 += '아직 첫 대운 전이에요.';
         }
         out.push('<p>' + s2 + '</p>');
       }
 
-      // 5) 경계 안내 (관법이 갈리는 자리)
       if (chart.hourEdge) out.push('<p>' + C.ui.chart.edgeHour + '</p>');
       if (chart.termEdge) out.push('<p>' + C.ui.chart.edgeTerm + '</p>');
     }
@@ -680,108 +995,155 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* 3-1. 천기 조립 — 만세력 결과 + copy.js 문장                          */
+  /* 5. 유료 화면 렌더                                                   */
   /* ------------------------------------------------------------------ */
 
-  function buildReading(chart, input) {
-    var m = C.MASTER[chart.dayMaster];
-    var focusKey = C.FOCUS[input.focus] ? input.focus : 'love';
-    var elemKo = STEM_ELEM[chart.dayMaster];
-    var dmName = S.STEMS[chart.dayMaster] + elemKo;                          // 계수
-    var dmHanja = S.STEMS_HANJA[chart.dayMaster] + S.ELEM_HANJA[elemKo];     // 癸水
-    var name = (input.name || '').trim() || '손님';
-    var timing = S.loveTiming(chart, Date.now());
-    var timingText = timing
-      ? S.fmtDate(timing.startMs) + ' ~ ' + S.fmtDate(timing.endMs)
-      : null;
+  function renderPaid(r, input) {
+    var p = r.palja;
+    var elem = r.dayMaster.elem;
+    var art = ELEM_ART[elem];
 
-    var r = {
-      name: name,
-      callName: name === '손님' ? '손님' : name + ' 님',
-      chart: chart,
-      master: m,
-      focusKey: focusKey,
-      focus: C.FOCUS[focusKey],
-      focusText: m.focus[focusKey],
-      dayMaster: { name: dmName + '(' + dmHanja + ')', short: dmName, hanja: dmHanja, elem: elemKo },
-      timing: timing,
-      timingText: timingText
+    $('#paid-crumb').textContent = C.PAID.crumb;
+    $('#result-call').textContent = fill(C.ui.call.long);
+    $('#result-title').textContent = tidy(p.def);
+    $('#bomb-text').textContent = tidy(p.bomb);
+    $('#result-birth').innerHTML = birthLines(r, input).map(function (t) { return '<span>' + t + '</span>'; }).join('');
+
+    var img = $('#result-cat');
+    img.onerror = function () {
+      img.onerror = null;
+      img.src = 'public/cat-' + art.slug + '-ink.png';
     };
-    r.summary = buildSummary(r);
-    return r;
-  }
+    img.src = 'public/cat-' + art.slug + '-ink.webp';
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
+    $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + p.name;
 
-  // 결과 요약 복사 — 단톡방에 붙여도 도사의 말투가 남게
-  function buildSummary(r) {
-    var p = r.chart.pillars;
-    var m = r.master;
-    var line = function (pl) { return pl ? pl.ko + '(' + pl.hanja + ')' : '시주 모름'; };
-    var L = [];
-    L.push('냥도사의 천기누설 — ' + r.name);
-    L.push('사주명식: ' + line(p.year) + ' · ' + line(p.month) + ' · ' + line(p.day) + ' · ' + line(p.hour));
-    L.push('일간: ' + r.dayMaster.name + ' / 오행: ' + r.chart.dist.map(function (d) { return d.elem + d.pct + '%'; }).join(' '));
-    L.push('한 줄 정의: ' + m.title);
-    L.push('');
-    L.push(fill(m.bomb, r.name));
-    L.push('');
-    L.push('[본편]');
-    L.push('· ' + C.ui.result.sections.gift + ': ' + fill(m.gift, r.name));
-    L.push('· ' + C.ui.result.sections.money + ': ' + fill(m.money, r.name));
-    L.push('· ' + fill(C.ui.result.sections.ask, r.name) + ' (' + r.focus.label + '): ' + fill(r.focusText, r.name));
-    L.push('· ' + C.ui.result.sections.timing + ': ' + fill(m.timing, r.name) +
-      (r.timingText ? ' [' + r.timingText + ']' : ''));
-    L.push('');
-    L.push('[보너스]');
-    L.push('· ' + C.ui.result.bonus.label1 + ' 내가 보는 나: ' + fill(m.selfSee, r.name));
-    L.push('· 스스로 오해하는 점: ' + fill(m.selfBlind, r.name));
-    L.push('· 남들이 보는 나: ' + fill(m.firstMet, r.name));
-    L.push('· 친해진 뒤: ' + fill(m.closer, r.name));
-    L.push('· ' + C.ui.result.bonus.label2 + ' 가까워질 때: ' + fill(m.love, r.name));
-    L.push('· 곁에 둘 기운: ' + fill(m.keep, r.name));
-    L.push('· 피할 기운: ' + fill(m.avoidEnergy, r.name));
-    L.push('');
-    L.push('· ' + C.ui.result.talismanTitle + ': ' + fill(m.talisman, r.name));
-    L.push('');
-    L.push('냥도사가 봤습니다. 재미로 보세요. (복채 900원)');
-    return tidy(L.join('\n'));
-  }
-
-  function renderTeaser(r, input) {
-    $('#teaser-call').textContent = fill(C.ui.call.short);
-    $('#teaser-birth').innerHTML = birthLines(r, input).map(function (t) { return '<span>' + t + '</span>'; }).join('');
-    $('#teaser-meta').textContent = metaLine(r.chart);
-    renderPillars($('#pillars'), r.chart);
-    $('#teaser-myeong-foot').innerHTML = myeongFoot(r.chart, false, r.name);
-    $('#daymaster-badge').textContent = '일간 ' + r.dayMaster.short;
-    renderOheng($('#oheng'), r.chart);
-    renderCycle($('#cycle'), r.chart, r.name);
-    $('#teaser-line').textContent = fill(r.master.bomb);
-    renderLockedSections(r);
-  }
-
-  // 잠금 너머로 비치는 미리보기 — 본편 사주 4칸과 같은 순서로
-  function renderLockedSections(r) {
-    var box = $('#locked-inner');
-    var m = r.master;
-    var blocks = [
-      [C.ui.result.sections.gift, fill(m.gift)],
-      [C.ui.result.sections.money, fill(m.money)],
-      [fill(C.ui.result.sections.ask), fill(r.focusText)],
-      [C.ui.result.sections.timing, fill(m.timing)]
-    ];
-    box.innerHTML = blocks.map(function (b) {
-      return '<h3>' + b[0] + '</h3><p>' + hanjaize(b[1]) + '</p>';
+    // 1,900원으로 연 천기 체크리스트
+    $('#opened-title').textContent = C.PAID.openedTitle;
+    $('#opened-sub').textContent = C.PAID.openedSub.replace('{focus}', r.focus.label);
+    $('#opened-list').innerHTML = C.VALUE.map(function (v) {
+      return '<li>' + esc(v.title) + '</li>';
     }).join('');
+
+    // 본편: 세 가지 운 (고른 운세부터)
+    var html = '';
+    r.themes.forEach(function (t, i) {
+      html += entryHtml(pad(i + 1), {
+        title: t.title,
+        term: i === 0 ? t.term : '',
+        body: t.body,
+        why: t.why || ''
+      });
+    });
+    $('#result-sections').innerHTML = html;
+
+    // 팩폭 심층 · 성향 상세
+    var m = r.master;
+    var bp = C.ui.result.bonus.parts;
+    var deep = [
+      {
+        bonus: C.ui.result.bonus.label1,
+        title: C.PAID.bombTitle,
+        parts: [
+          { label: bp.me, text: tidy(p.bomb) },
+          { label: bp.blind, text: fill(m.selfBlind, r.name) },
+          { label: bp.first, text: fill(m.firstMet, r.name) }
+        ]
+      },
+      {
+        bonus: C.ui.result.bonus.label2,
+        title: C.PAID.traitTitle,
+        tags: p.tags,
+        parts: p.traits.map(function (tr) {
+          return { label: tr.label, text: tr.text };
+        }).concat([
+          { label: bp.closer, text: fill(m.closer, r.name) }
+        ])
+      },
+      {
+        bonus: C.ui.result.bonus.label3,
+        title: C.ui.result.bonus.title2,
+        parts: [
+          { label: bp.when, text: fill(m.love, r.name) },
+          { label: bp.keep, text: fill(m.keep, r.name) },
+          { label: bp.avoid, text: fill(m.avoidEnergy, r.name), warn: true }
+        ]
+      }
+    ];
+    html = '';
+    deep.forEach(function (s) { html += entryHtml('', s); });
+    $('#result-sections-bonus').innerHTML = html;
+    $('#bonus-kicker').textContent = C.ui.result.bonus.kicker;
+    $('#bonus-title').textContent = C.PAID.bombTitle + ' · ' + C.PAID.traitTitle;
+    $('#bonus-sub').textContent = C.ui.result.bonus.sub;
+
+    // 반복되는 인생 패턴
+    $('#pattern-sub').textContent = C.PAID.patternSub;
+    $('#pattern-list').innerHTML = r.patterns.map(function (pt, i) {
+      return '<li class="pattern"><span class="pattern__no">' + pad(i + 1) + '</span>' +
+        '<span class="pattern__label">' + esc(pt.label) + '</span>' +
+        '<p class="pattern__text">' + hanjaize(fill(pt.text, r.name)) + '</p>' +
+        '<span class="pattern__cut"><b>' + C.PAID.patternCut + '</b>' + hanjaize(fill(pt.cut, r.name)) + '</span></li>';
+    }).join('');
+
+    // 인연 궤도 상세 해석 (무료 화면의 잠금 문구도 같이 풀린다)
+    $('#orbit-detail-sub').textContent = C.PAID.orbitSub;
+    renderOrbitDetail();
+    renderOrbit();
+
+    // 오늘의 천기 부적
+    $('#result-sections-talis').innerHTML =
+      '<div class="entry entry--talis">' +
+        '<p class="entry__text">' + tidy(fill(m.talisman, r.name)) +
+        '<span>' + C.ui.result.talismanAvoid + tidy(fill(m.avoid, r.name)) + '</span></p>' +
+      '</div>';
+
+    drawAmulet(r, elem);
+    $('#btn-save-card').hidden = false;
+    $('#btn-share-card').hidden = !canShareFiles();
+  }
+
+  // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 BONUS 배지
+  function entryHtml(no, s) {
+    var head = s.bonus
+      ? '<div class="entry__badge">' + s.bonus + '</div>' +
+        '<h3 class="entry__title">' + s.title + '</h3>'
+      : '<span class="entry__no">' + no + '</span>' +
+        '<h3 class="entry__title">' + s.title + '</h3>';
+
+    var html = '<div class="entry' + (s.bonus ? ' entry--bonus' : '') + '">' +
+      '<div class="entry__head">' + head + '</div>';
+
+    if (s.term) html += '<span class="entry__term">' + esc(s.term) + '</span>';
+
+    if (s.body) {
+      html += '<p class="entry__text">' + hanjaize(s.body);
+      if (s.why) html += ' <span class="entry__why">(' + esc(s.why) + ')</span>';
+      html += '</p>';
+    }
+
+    if (s.parts) {
+      html += s.parts.map(function (p) {
+        return '<p class="entry__part' + (p.warn ? ' entry__part--warn' : '') + '">' +
+          '<span class="entry__part-label">' + p.label + '</span>' + hanjaize(p.text) + '</p>';
+      }).join('');
+    }
+
+    if (s.tags && s.tags.length) {
+      html += '<div class="entry__tags">' + s.tags.map(function (t) {
+        return '<span>' + esc(t) + '</span>';
+      }).join('') + '</div>';
+    }
+    return html + '</div>';
   }
 
   /* ------------------------------------------------------------------ */
-  /* 3-2. 인연 궤도 — 나 중심 달 궤도 궁합                                */
+  /* 6. 인연 궤도 — 나 중심 달 궤도 궁합 (무료 지도 · 유료 상세)          */
   /* ------------------------------------------------------------------ */
 
   var FRIEND_KEY = 'nyangsaJu.friends.v1';
   var MAX_FRIENDS = 9;
 
-  // 첫 화면부터 어떻게 보이는지 알 수 있게, 기본 샘플 네 명을 궤도에 올려 둔다
   var SAMPLES = [
     { id: 's1', name: '유진', year: 1994, month: 3, day: 5, hourIdx: 6, gender: '여성', sample: true },
     { id: 's2', name: '하람', year: 1993, month: 8, day: 21, hourIdx: 4, gender: '여성', sample: true },
@@ -829,17 +1191,40 @@
     }).filter(Boolean);
   }
 
-  // 그 친구가 나에게 어떤 기운을 주는지 한 줄
-  function orbitLine(item) {
-    var tpl = C.orbit.relation[item.compat.relation] || C.orbit.relation.same;
-    var line = tpl
+  function typeOf(compat) {
+    return C.ORBIT_TYPE[compat.relation] || C.ORBIT_TYPE.same;
+  }
+
+  function typeFill(tpl, item) {
+    return fill(String(tpl)
       .replace(/\{f\}/g, item.f.name)
       .replace(/\{fe\}/g, S.ELEM_KO[item.compat.youElem])
-      .replace(/\{me\}/g, S.ELEM_KO[item.compat.meElem]);
+      .replace(/\{me\}/g, S.ELEM_KO[item.compat.meElem]));
+  }
+
+  // 무료: 유형 + 한 줄
+  function orbitLine(item) {
+    var T = typeOf(item.compat);
+    var line = typeFill(T.line, item);
     if (item.compat.hap) line += ' ' + C.orbit.hapLine;
-    else if (item.compat.yukhap) line += ' ' + C.orbit.yukhapLine;
-    if (item.compat.chung) line += ' ' + C.orbit.chungLine;
-    return fill(line);
+    return line;
+  }
+
+  // 유료: 상세 해석 + 이렇게
+  function orbitDetailParts(item) {
+    var T = typeOf(item.compat);
+    var detail = typeFill(T.detail, item);
+    if (item.compat.hap) detail += ' ' + C.orbit.hapLine;
+    else if (item.compat.yukhap) detail += ' ' + C.orbit.yukhapLine;
+    if (item.compat.chung) detail += ' ' + C.orbit.chungLine;
+    return {
+      name: item.f.name,
+      type: T.name,
+      score: item.compat.score,
+      detail: detail,
+      advice: typeFill(T.advice, item),
+      tags: item.compat.tags
+    };
   }
 
   function renderOrbit() {
@@ -879,25 +1264,31 @@
         var ly = ny < cy ? ny - 20 : ny + 28;
         var on = state.selectedFriend === d.f.id ? ' is-on' : '';
         nodes += '<g class="orbit__node orbit__node--' + k + on + '" data-friend-id="' + esc(d.f.id) + '"' +
-          ' tabindex="0" role="button" aria-label="' + esc(d.f.name) + ' 님, ' + k + '궤도, ' + d.compat.score + '점">' +
+          ' tabindex="0" role="button" aria-label="' + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ', ' + d.compat.score + '점">' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="26" fill="transparent"/>' +
           '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="15"/>' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="4.4" fill="' + S.ELEM_COLOR[d.compat.youElem] + '"/>' +
           '<text class="orbit__node-name" x="' + nx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + esc(label) + '</text>' +
-          '<title>' + esc(d.f.name) + ' 님 · ' + k + '궤도 · ' + d.compat.score + '점</title>' +
+          '<title>' + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' · ' + d.compat.score + '점</title>' +
           '</g>';
       });
     });
 
-    var svg = rings + nodes + center;
-    $('#orbit-svg').innerHTML = svg;
+    $('#orbit-svg').innerHTML = rings + nodes + center;
     $('#orbit-svg').setAttribute('aria-label',
       '나를 중심으로 한 인연 궤도. 1궤도 ' + byOrbit[1].length + '명, 2궤도 ' + byOrbit[2].length +
       '명, 3궤도 ' + byOrbit[3].length + '명.');
 
-    $('#orbit-legend').innerHTML = C.orbit.legend.map(function (l) {
-      return '<li class="orbit__leg orbit__leg--' + l.n + '"><i aria-hidden="true"></i>' +
-        '<span><b>' + l.label + '</b> ' + l.name + '</span><em>' + byOrbit[l.n].length + '명</em></li>';
+    // 범례는 궤도가 아니라 관계 유형 다섯으로
+    var typeCount = {};
+    data.forEach(function (d) {
+      var k = d.compat.relation;
+      typeCount[k] = (typeCount[k] || 0) + 1;
+    });
+    $('#orbit-legend').innerHTML = ['gwiin', 'give', 'same', 'press', 'drain'].map(function (k) {
+      var T = C.ORBIT_TYPE[k];
+      return '<li class="orbit__leg orbit__leg--type orbit__leg--' + k + '"><i aria-hidden="true"></i>' +
+        '<b>' + T.name + '</b><em>' + (typeCount[k] || 0) + '명</em></li>';
     }).join('');
 
     $('#orbit-list').innerHTML = data.length ? data.map(function (d) {
@@ -905,19 +1296,44 @@
       return '<li class="orbit__item' + on + '">' +
         '<button type="button" class="orbit__pick" data-pick="' + esc(d.f.id) + '">' +
         '<span class="orbit__item-name">' + esc(d.f.name) + (d.f.sample ? '<i>샘플</i>' : '') + '</span>' +
-        '<span class="orbit__item-meta">' + d.compat.orbit + '궤도 · ' + d.compat.score + '점</span>' +
+        '<span class="orbit__item-meta">' + typeOf(d.compat).name + ' · ' + d.compat.score + '점</span>' +
         '</button>' +
         '<button type="button" class="orbit__remove" data-remove="' + esc(d.f.id) + '"' +
         ' aria-label="' + esc(C.orbit.removeAria.replace('{name}', d.f.name)) + '">×</button></li>';
     }).join('') : '<li class="orbit__none">' + C.orbit.empty + '</li>';
 
     var sel = data.filter(function (d) { return d.f.id === state.selectedFriend; })[0];
-    $('#orbit-caption').innerHTML = sel
-      ? '<b>' + esc(sel.f.name) + ' 님 · ' + sel.compat.orbit + '궤도 · ' + sel.compat.score + '점</b>' +
-        '<span>' + orbitLine(sel) + '</span>'
-      : fill(C.orbit.tip);
+    var cap = $('#orbit-caption');
+    if (sel) {
+      cap.innerHTML = '<b>' + esc(sel.f.name) + ' 님 · ' + typeOf(sel.compat).name + ' · ' + sel.compat.score + '점</b>' +
+        '<span>' + hanjaize(state.paid ? orbitDetailParts(sel).detail : orbitLine(sel)) + '</span>';
+    } else {
+      cap.innerHTML = fill(C.orbit.tip);
+    }
 
+    $('#orbit-lock').hidden = !!state.paid;
     renderInviteCard();
+  }
+
+  /* --- 유료 : 궤도 상세 해석 목록 ------------------------------------ */
+
+  function renderOrbitDetail() {
+    var box = $('#orbit-detail');
+    if (!box) return;
+    var data = orbitData();
+    if (!data.length) {
+      box.innerHTML = '<li class="orbit__detail-empty">' + C.PAID.orbitEmpty + '</li>';
+      return;
+    }
+    box.innerHTML = data.map(function (d) {
+      var it = orbitDetailParts(d);
+      return '<li><div class="orbit__detail-top">' +
+        '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>샘플</i></i>' : '') + '</span>' +
+        '<span class="orbit__detail-type">' + esc(it.type) + '</span>' +
+        '<span class="orbit__detail-score">' + it.score + '점</span></div>' +
+        '<p class="orbit__detail-text">' + hanjaize(it.detail) + '</p>' +
+        '<p class="orbit__detail-advice">' + hanjaize(it.advice) + '</p></li>';
+    }).join('');
   }
 
   function inviteItem() {
@@ -938,8 +1354,8 @@
     box.innerHTML = '<p class="invite__kicker">초대 링크로 오셨네요</p>' +
       '<h4 class="invite__title">' + esc(C.orbit.inviteLanded.replace(/\{name\}/g, name)) +
       ' <b>' + item.compat.score + '점</b></h4>' +
-      '<p class="invite__meta">내 궤도에서 ' + esc(name) + ' 님은 <b>' + item.compat.orbit + '궤도 · ' + orbitName(item.compat.orbit) + '</b></p>' +
-      '<p class="invite__text">' + orbitLine(item) + '</p>' +
+      '<p class="invite__meta">내 궤도에서 ' + esc(name) + ' 님은 <b>' + typeOf(item.compat).name + ' · ' + orbitName(item.compat.orbit) + '</b></p>' +
+      '<p class="invite__text">' + hanjaize(state.paid ? orbitDetailParts(item).detail : orbitLine(item)) + '</p>' +
       (already ? '' : '<button type="button" class="btn btn--line" data-invite-add>' + C.orbit.inviteAdd + '</button>');
     box.hidden = false;
   }
@@ -1037,7 +1453,8 @@
       if (pick) selectFriend(pick.getAttribute('data-pick'));
     });
 
-    $('#btn-invite').addEventListener('click', copyInvite);
+    $('#btn-invite').addEventListener('click', function () { copyInvite('copy'); });
+    $('#btn-invite-share').addEventListener('click', shareInvite);
 
     $('#invite-card').addEventListener('click', function (e) {
       if (e.target.closest('[data-invite-add]')) addInviteFriend();
@@ -1093,6 +1510,7 @@
     saveFriends();
     state.selectedFriend = rec.id;
     renderOrbit();
+    if (state.paid) renderOrbitDetail();
     $('#friend-name').value = '';
     toast(C.orbit.addOk.replace('{name}', rec.name).replace('{orbit}', compat.orbit));
   }
@@ -1103,6 +1521,7 @@
     if (state.selectedFriend === id) state.selectedFriend = null;
     saveFriends();
     renderOrbit();
+    if (state.paid) renderOrbitDetail();
     if (gone) toast(C.orbit.removeOk.replace('{name}', gone.name));
   }
 
@@ -1119,6 +1538,7 @@
     saveFriends();
     state.selectedFriend = rec.id;
     renderOrbit();
+    if (state.paid) renderOrbitDetail();
     toast(C.orbit.inviteAdded.replace('{name}', rec.name));
   }
 
@@ -1127,22 +1547,42 @@
     renderOrbit();
   }
 
-  function copyInvite() {
+  function copyInvite(method) {
     if (!state.reading || !state.input) return;
     copyText(inviteUrl()).then(function () {
       toast(C.orbit.copied);
+      trackInvite(method || 'copy');
     }).catch(function () {
       toast(C.orbit.copyFail);
     });
   }
 
+  function shareInvite() {
+    if (!state.reading || !state.input) return;
+    var url = inviteUrl();
+    var payload = { title: C.brand.name, text: C.orbit.inviteBody.replace(/\{name\}/g, state.reading.name), url: url };
+    if (navigator.share) {
+      navigator.share(payload).then(function () { trackInvite('share'); }).catch(function () { });
+    } else {
+      copyText(url).then(function () { toast(C.orbit.copied); trackInvite('share'); }).catch(function () { });
+    }
+  }
+
+  function trackInvite(method) {
+    AN.track('friend_invite', {
+      method: method,
+      friends: state.friends.length,
+      cat: state.reading ? state.reading.palja.name : null
+    });
+  }
+
   /* ------------------------------------------------------------------ */
-  /* 4. 데모 결제                                                       */
+  /* 7. 결제 (미리보기)                                                  */
   /* ------------------------------------------------------------------ */
 
   function bindPayment() {
-    $('#btn-unlock').addEventListener('click', openPay);
-    $('#btn-unlock-2').addEventListener('click', openPay);
+    $('#btn-unlock').addEventListener('click', function () { openPay('value'); });
+    $('#btn-unlock-2').addEventListener('click', function () { openPay('sticky'); });
     $('#pay-methods').addEventListener('click', function (e) {
       var btn = e.target.closest('.pay-method');
       if (!btn) return;
@@ -1157,12 +1597,28 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closePay();
     });
+
+    // 모달의 1,900원 구성
+    $('#pay-value').innerHTML = C.VALUE.map(function (v) {
+      return '<li><span class="pay-value__no">' + v.no + '</span>' +
+        '<span class="pay-value__title">' + esc(v.title) + '</span>' +
+        '<p class="pay-value__desc">' + esc(v.desc) + '</p></li>';
+    }).join('');
+    $('#pay-badge').textContent = C.PAID.demoBadge;
+    $('#pay-note').textContent = C.PAID.demoNote;
+    $('#btn-pay').textContent = C.PAID.demoSubmit;
   }
 
-  function openPay() {
+  function openPay(source) {
     var modal = $('#pay-modal');
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
+    AN.track('pay_button_click', {
+      source: source || 'value',
+      price: 1900,
+      focus: state.focus,
+      cat: state.reading ? state.reading.palja.name : null
+    });
   }
 
   function closePay() {
@@ -1194,176 +1650,40 @@
       textEl.textContent = PAY_LOADING[i];
     }, 700);
 
+    var orderId = 'NYANG_DEMO_' + Date.now().toString(36).toUpperCase();
+
     setTimeout(function () {
       clearInterval(timer);
       loading.classList.remove('is-on');
       loading.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('is-loading');
       btn.disabled = false;
-      btn.textContent = C.ui.pay.submit;
+      btn.textContent = C.PAID.demoSubmit;
       state.paid = true;
-      renderResult(state.reading, state.input);
+      renderPaid(state.reading, state.input);
       show('screen-result');
-      toast(C.ui.toast.paid + PAY_LABEL[state.payMethod] + ' 900원');
+      toast(C.ui.toast.paid + PAY_LABEL[state.payMethod] + ' 1,900원');
+      AN.track('payment_complete', {
+        method: PAY_LABEL[state.payMethod],
+        methodKey: state.payMethod,
+        amount: 1900,
+        orderId: orderId,
+        demo: true,
+        cat: state.reading.palja.name,
+        friends: state.friends.length
+      });
     }, 2400);
   }
 
   /* ------------------------------------------------------------------ */
-  /* 5. 결과 렌더                                                        */
-  /* ------------------------------------------------------------------ */
-
-  function renderResult(r, input) {
-    var m = r.master;
-
-    $('#result-call').textContent = fill(C.ui.call.long);
-    $('#result-title').textContent = m.title;
-    $('#result-birth').innerHTML = birthLines(r, input).map(function (t) { return '<span>' + t + '</span>'; }).join('');
-    $('#bomb-text').textContent = fill(m.bomb);
-
-    renderPillars($('#pillars-result'), r.chart);
-    $('#result-meta').textContent = metaLine(r.chart);
-    $('#result-myeong-foot').innerHTML = myeongFoot(r.chart, true, r.name);
-
-    // 일간 오행에 맞는 고양이 일러스트 — 결과 상단 한가운데 크게
-    var elem = r.dayMaster.elem;
-    var art = ELEM_ART[elem];
-    var img = $('#result-cat');
-    img.onerror = function () {
-      img.onerror = null;
-      img.src = 'public/cat-' + art.slug + '-ink.png';
-    };
-    img.src = 'public/cat-' + art.slug + '-ink.webp';
-    img.alt = S.ELEM_HANJA[elem] + ' · ' + r.dayMaster.short + ' — ' + (m.scene || art.scene) + ' 콩눈 고양이 그림';
-    $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + r.dayMaster.short;
-
-    /* ---- 본편 · 사주 전체 해석 (기질 → 돈과 일 → 물어본 질문 → 타이밍) ---- */
-    var main = [
-      { title: C.ui.result.sections.gift, body: fill(m.gift) },
-      { title: C.ui.result.sections.money, body: fill(m.money) },
-      { title: fill(C.ui.result.sections.ask), term: r.focus.label, body: fill(r.focusText) }
-    ];
-
-    main.push({
-      title: C.ui.result.sections.timing,
-      term: r.timingText || null,
-      body: fill(m.timing),
-      why: (r.timing && r.timing.why && r.timing.why.length) ? r.timing.why.join(' · ') : ''
-    });
-
-    var html = '';
-    main.forEach(function (s, i) { html += entryHtml(pad(i + 1), s); });
-    $('#result-sections').innerHTML = html;
-
-    /* ---- 보너스 · 도사냥이의 시선 풀이 (BONUS 01 · 02, 03은 인연 궤도) ---- */
-    var bonus = C.ui.result.bonus;
-    var bp = bonus.parts;
-    var bonusSections = [
-      {
-        bonus: bonus.label1,
-        title: fill(bonus.title1),
-        parts: [
-          { label: bp.me, text: fill(m.selfSee) },
-          { label: bp.blind, text: fill(m.selfBlind) },
-          { label: bp.first, text: fill(m.firstMet) },
-          { label: bp.closer, text: fill(m.closer) }
-        ]
-      },
-      {
-        bonus: bonus.label2,
-        title: bonus.title2,
-        tags: m.tags,
-        parts: [
-          { label: bp.when, text: fill(m.love) },
-          { label: bp.keep, text: fill(m.keep) },
-          { label: bp.avoid, text: fill(m.avoidEnergy), warn: true }
-        ]
-      }
-    ];
-
-    html = '';
-    bonusSections.forEach(function (s) { html += entryHtml('', s); });
-    $('#result-sections-bonus').innerHTML = html;
-
-    // 보너스 띠 머리글 · 궤도 머리글 · 초대 링크 안내도 copy.js 한 곳에서
-    $('#bonus-kicker').textContent = bonus.kicker;
-    $('#bonus-title').textContent = bonus.title;
-    $('#bonus-sub').textContent = bonus.sub;
-    $('#orbit-kicker').textContent = C.orbit.kicker;
-    $('#orbit-invite-hint').textContent = fill(C.orbit.inviteHint);
-
-    /* ---- 오늘의 천기 부적 (공유·저장 카드 바로 위) ---- */
-    $('#result-sections-talis').innerHTML =
-      '<div class="entry entry--talis">' +
-        '<p class="entry__text">' + tidy(fill(m.talisman)) +
-        '<span>' + C.ui.result.talismanAvoid + tidy(fill(m.avoid)) + '</span></p>' +
-      '</div>';
-
-    $('#result-oheng-badge').textContent = '일간 ' + r.dayMaster.short;
-    renderOheng($('#result-oheng'), r.chart);
-    renderCycle($('#result-cycle'), r.chart, r.name);
-
-    state.selectedFriend = null;
-    renderOrbit();
-
-    drawAmulet(r, elem);
-    $('#btn-save-card').hidden = false;
-    $('#btn-share-card').hidden = !canShareFiles();
-  }
-
-  // 결과 섹션 한 덩어리 (제목 · 기간 · 본문 · 태그) — 본편은 번호, 보너스는 BONUS 배지
-  function entryHtml(no, s) {
-    var head = s.bonus
-      ? '<div class="entry__badge">' + s.bonus + '</div>' +
-        '<h3 class="entry__title">' + s.title + '</h3>'
-      : '<span class="entry__no">' + no + '</span>' +
-        '<h3 class="entry__title">' + s.title + '</h3>';
-
-    var html = '<div class="entry' + (s.talis ? ' entry--talis' : '') +
-      (s.bonus ? ' entry--bonus' : '') + '">' +
-      '<div class="entry__head">' + head + '</div>';
-
-    if (s.term) html += '<span class="entry__term">' + s.term + '</span>';
-
-    if (s.body) {
-      html += '<p class="entry__text">' + (s.talis ? tidy(s.body) : hanjaize(s.body));
-      if (s.why) html += ' <span class="entry__why">(' + s.why + ')</span>';
-      if (s.avoid) html += '<span>' + s.avoid + '</span>';
-      html += '</p>';
-    }
-
-    if (s.extra) {
-      html += '<p class="entry__text entry__text--after">' + hanjaize(s.extra) + '</p>';
-    }
-
-    if (s.parts) {
-      html += s.parts.map(function (p) {
-        return '<p class="entry__part' + (p.warn ? ' entry__part--warn' : '') + '">' +
-          '<span class="entry__part-label">' + p.label + '</span>' + hanjaize(p.text) + '</p>';
-      }).join('');
-    }
-
-    if (s.tags && s.tags.length) {
-      html += '<div class="entry__tags">' + s.tags.map(function (t) {
-        return '<span>' + t + '</span>';
-      }).join('') + '</div>';
-    }
-    return html + '</div>';
-  }
-
-  function copySummary(r) {
-    return String(r.summary || '');
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* 6. 천기 부적 한 장 (Canvas 1080×1920)                              */
+  /* 8. 천기 부적 한 장 (Canvas 1080×1920)                              */
   /* ------------------------------------------------------------------ */
 
   var CW = 1080, CH = 1920;
   var INK = '#1E1A17', INK2 = '#453D36', INK3 = '#7A6B5D';
   var RED = '#C73E2C', RED_D = '#A93222';
-  var PAPER = '#F5EFE2';
+  var PAPER = '#F5EFE2', PAPER_HI = '#FBF6EA';
 
-  // 부적 카드도 한자를 뺀 글자는 Paperlogy, 한자(緣·水)만 명조
   var F_SANS = '"Paperlogy", "Song Myung", "Gowun Batang", sans-serif';
   var F_HANJA = '"Song Myung", serif';
   var HANJA_RE = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/;
@@ -1412,7 +1732,7 @@
   function ensureFonts() {
     if (!document.fonts || !document.fonts.load) return Promise.resolve();
     var specs = [
-      '400 32px "Paperlogy"', '700 32px "Paperlogy"',
+      '400 32px "Paperlogy"', '700 32px "Paperlogy"', '800 32px "Paperlogy"',
       '400 32px "Gowun Batang"', '700 32px "Gowun Batang"',
       '700 76px "Song Myung"', '400 76px "Song Myung"'
     ];
@@ -1468,7 +1788,6 @@
     return lines;
   }
 
-  /* ---------- 매화 구분선 ---------- */
   function plumDivider(ctx, cx, y, halfWidth) {
     ctx.save();
     ctx.strokeStyle = INK;
@@ -1494,13 +1813,11 @@
     ctx.restore();
   }
 
-  /* ---------- 사주명식 미니 기둥 + 오행 분포 띠 ----------------------- */
+  /* --- 사주명식 미니 기둥 + 오행 분포 띠 ---------------------------- */
 
-  // 명식 블록의 좌우 먹선 (카드 1080 안에서 좌우 104px씩 비운 872px)
   var META_X0 = 104, META_X1 = 976;
-  var META_H = 334;   // 위 먹선 ~ 아래 먹선
+  var META_H = 334;
 
-  // 곧은 먹선 — 붓 테두리와 달리 손떨림 없는 한 줄
   function inkRule(ctx, x0, x1, y, alpha) {
     ctx.save();
     ctx.strokeStyle = 'rgba(30,26,23,' + (alpha || 0.5) + ')';
@@ -1512,7 +1829,6 @@
     ctx.restore();
   }
 
-  // 기둥 한 칸 — 년주/월주/일주/시주. 일주는 먹선 테두리로 강조
   function drawPillar(ctx, cx, top, label, p, isDay) {
     ctx.save();
     ctx.textAlign = 'left';
@@ -1555,13 +1871,14 @@
     ctx.restore();
   }
 
-  // 오행 수치 한 줄 — 木 13% · 火 12% · 土 25% · 金 25% · 水 25%
+  // 오행 수치 한 줄 — 木 1 13% · 火 1 12% · 土 2 25% … (개수와 비율을 같이)
   function drawElemLegend(ctx, dist, cx, y) {
     var parts = [];
     dist.forEach(function (d, k) {
-      if (k) parts.push({ t: '  ·  ', size: 21, weight: '400', color: 'rgba(69,61,54,0.5)', hanja: false });
+      if (k) parts.push({ t: '  ·  ', size: 20, weight: '400', color: 'rgba(69,61,54,0.5)', hanja: false });
       parts.push({ t: d.hanja, size: 23, weight: '700', color: d.ink, hanja: true });
-      parts.push({ t: ' ' + d.pct + '%', size: 23, weight: '400', color: INK2, hanja: false });
+      parts.push({ t: ' ' + d.count + '개', size: 21, weight: '700', color: INK2, hanja: false });
+      parts.push({ t: ' ' + d.pct + '%', size: 21, weight: '400', color: INK2, hanja: false });
     });
 
     var total = 0;
@@ -1605,8 +1922,7 @@
 
     drawElemLegend(ctx, chart.dist, cx, P0 + 198);
 
-    /* 100% 누적 띠 */
-    var barY = P0 + 212, barH = 22;
+    var barY = P0 + 214, barH = 22;
     var total = chart.dist.reduce(function (s, d) { return s + d.pct; }, 0) || 100;
     var acc = x0;
     chart.dist.forEach(function (d) {
@@ -1631,7 +1947,7 @@
     inkRule(ctx, x0, x1, y0 + META_H, 0.5);
   }
 
-  /* ---------- 붓으로 그은 선 ---------- */
+  /* --- 붓으로 그은 선 ------------------------------------------------ */
   function pushEdge(ctx, x1, y1, x2, y2, amp, phase, first) {
     var len = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)) || 1;
     var nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
@@ -1674,7 +1990,6 @@
     ctx.restore();
   }
 
-  /* ---------- 굵은 먹선 테두리 (겹쳐 그은 붓 자국) ---------- */
   function inkBorder(ctx) {
     ctx.save();
     ctx.strokeStyle = INK;
@@ -1685,7 +2000,6 @@
     ctx.restore();
   }
 
-  /* ---------- 인주 도장 (음각 · 두 글자는 세로로) ---------- */
   function sealStamp(ctx, x, y, size, chars, rnd) {
     var i, half = size / 2, per, side, along, px, py;
     var arr = String(chars).split('');
@@ -1693,13 +2007,11 @@
     ctx.translate(x + half, y + half);
     ctx.rotate(-0.07);
 
-    // 살짝 눌린 네 변
     ctx.globalAlpha = 0.94;
     ctx.fillStyle = RED;
     wobbleRectPath(ctx, -half, -half, half, half, 1.5, 1.1);
     ctx.fill();
 
-    // 가장자리만 종이가 비치는 결 (찍힘)
     ctx.fillStyle = PAPER;
     for (i = 0; i < 22; i++) {
       per = 4 * size;
@@ -1713,7 +2025,6 @@
       ctx.fill();
     }
 
-    // 글자 (음각) — 한 글자는 크게, 두 글자는 위아래로
     ctx.globalAlpha = 1;
     ctx.fillStyle = PAPER;
     ctx.strokeStyle = PAPER;
@@ -1733,13 +2044,43 @@
     ctx.textAlign = 'left';
   }
 
-  /* ---------- 천기 부적 한 장 ---------- */
+  /* 한지 바탕 + 종이 결 + 붓 테두리 (두 캔버스가 같이 쓴다) */
+  function paintPaper(ctx, seed) {
+    var i, rnd = seededRand(seed);
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, CW, CH);
+    for (i = 0; i < 2400; i++) {
+      ctx.fillStyle = 'rgba(120,100,74,' + (0.005 + rnd() * 0.017).toFixed(3) + ')';
+      ctx.fillRect(rnd() * CW, rnd() * CH, 2.2, 2.2);
+    }
+    ctx.lineCap = 'round';
+    for (i = 0; i < 64; i++) {
+      ctx.strokeStyle = 'rgba(120,100,74,' + (0.025 + rnd() * 0.045).toFixed(3) + ')';
+      ctx.lineWidth = 1 + rnd() * 1.3;
+      var fx = rnd() * CW, fy = rnd() * CH, fa = rnd() * Math.PI, fl = 8 + rnd() * 22;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx + Math.cos(fa) * fl, fy + Math.sin(fa) * fl);
+      ctx.stroke();
+    }
+    inkBorder(ctx);
+  }
+
+  function catBox(ctx, img, boxW, boxH, top) {
+    if (!img) return top + boxH;
+    var sc = Math.min(boxW / img.width, boxH / img.height);
+    var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+    ctx.drawImage(img, (CW - w) / 2, top + boxH - h, w, h);
+    return top + boxH;
+  }
+
+  /* ---------- 나만의 천기부적 (유료 · 1080×1920) ---------- */
   function drawAmulet(r, elem) {
     var canvas = $('#amulet');
+    if (!canvas) return;
     var ctx = canvas.getContext('2d');
-    var W = CW, H = CH;
     var art = ELEM_ART[elem] || ELEM_ART['수'];
-    var bombText = tidy(fill(r.master.bomb, r.name));
+    var bombText = tidy(fill(r.palja.bomb, r.name));
     var talisText = tidy(fill(r.master.talisman, r.name));
 
     var seed = hashStr((r.name || '') + '|' + (state.input ? [state.input.year, state.input.month, state.input.day, state.input.hourIdx].join('-') : ''));
@@ -1753,61 +2094,30 @@
       var img = res[1];
       var i, ti;
 
-      if (canvas.width !== W) canvas.width = W;
-      if (canvas.height !== H) canvas.height = H;
+      if (canvas.width !== CW) canvas.width = CW;
+      if (canvas.height !== CH) canvas.height = CH;
 
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, CW, CH);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      /* ---------- 한지 ---------- */
-      ctx.fillStyle = PAPER;
-      ctx.fillRect(0, 0, W, H);
-      for (i = 0; i < 2400; i++) {
-        ctx.fillStyle = 'rgba(120,100,74,' + (0.005 + rnd() * 0.017).toFixed(3) + ')';
-        ctx.fillRect(rnd() * W, rnd() * H, 2.2, 2.2);
-      }
-      ctx.lineCap = 'round';
-      for (i = 0; i < 64; i++) {
-        ctx.strokeStyle = 'rgba(120,100,74,' + (0.025 + rnd() * 0.045).toFixed(3) + ')';
-        ctx.lineWidth = 1 + rnd() * 1.3;
-        var fx = rnd() * W, fy = rnd() * H, fa = rnd() * Math.PI, fl = 8 + rnd() * 22;
-        ctx.beginPath();
-        ctx.moveTo(fx, fy);
-        ctx.lineTo(fx + Math.cos(fa) * fl, fy + Math.sin(fa) * fl);
-        ctx.stroke();
-      }
+      paintPaper(ctx, seed || 20261124);
+      sealStamp(ctx, CW - 214, 152, 94, C.brand.stamp, rnd);
 
-      /* ---------- 테두리 · 도장 ---------- */
-      inkBorder(ctx);
-      sealStamp(ctx, W - 214, 152, 94, C.brand.stamp, rnd);
-
-      /* ---------- 머리글 (34px · 카드의 타이틀) ---------- */
       ctx.textAlign = 'left';
       ctx.fillStyle = INK2;
-      fillSpaced(ctx, C.ui.arumulet.header, W / 2, 208, 15, 'center', 34, 700);
+      fillSpaced(ctx, C.ui.arumulet.header, CW / 2, 208, 15, 'center', 34, 700);
 
-      /* ---------- 일간 오행 고양이 ---------- */
-      var boxW = 450, boxH = 360, catY = 246;
-      var catW = boxW, catH = boxH;
-      if (img) {
-        var sc = Math.min(boxW / img.width, boxH / img.height);
-        catW = Math.round(img.width * sc);
-        catH = Math.round(img.height * sc);
-        ctx.drawImage(img, (W - catW) / 2, catY + boxH - catH, catW, catH);
-      }
-      var artBottom = catY + boxH;
+      var artBottom = catBox(ctx, img, 450, 360, 246);
 
-      /* ---------- 물상 캡션 (水 · 계수) ---------- */
       ctx.textAlign = 'left';
       ctx.fillStyle = S.ELEM_INK[elem];
-      fillSpaced(ctx, S.ELEM_HANJA[elem] + ' · ' + r.dayMaster.short, W / 2, artBottom + 48, 5, 'center', 30, 700);
+      fillSpaced(ctx, S.ELEM_HANJA[elem] + ' · ' + r.palja.name, CW / 2, artBottom + 48, 5, 'center', 30, 700);
 
-      /* ---------- 부적 한마디(큼직하게) · 팩트(한 단계 아래) ---------- */
       ctx.textAlign = 'center';
       var contentTop = artBottom + 68;
-      var metaY1 = H - 272;              // 명식 블록 아래 먹선
-      var metaY0 = metaY1 - META_H;      // 명식 블록 위 먹선
+      var metaY1 = CH - 272;
+      var metaY0 = metaY1 - META_H;
       var contentBottom = metaY0 - 14;
       var avail = contentBottom - contentTop;
 
@@ -1842,37 +2152,34 @@
       ctx.lineWidth = 0.8;
       ctx.font = '700 ' + phraseSize + 'px ' + F_SANS;
       for (ti = 0; ti < phraseLines.length; ti++) {
-        ctx.strokeText(phraseLines[ti], W / 2, baseline + ti * lh);
-        ctx.fillText(phraseLines[ti], W / 2, baseline + ti * lh);
+        ctx.strokeText(phraseLines[ti], CW / 2, baseline + ti * lh);
+        ctx.fillText(phraseLines[ti], CW / 2, baseline + ti * lh);
       }
 
-      /* ---------- 팩트 한 줄 ---------- */
       var divY = baseline + (phraseLines.length - 1) * lh + Math.round(phraseSize * 0.42) + gapB;
-      plumDivider(ctx, W / 2, divY, 148);
+      plumDivider(ctx, CW / 2, divY, 148);
 
       ctx.fillStyle = RED_D;
       ctx.textAlign = 'left';
-      fillSpaced(ctx, C.ui.arumulet.factKicker, W / 2, divY + 56, 7, 'center', 24, 700);
+      fillSpaced(ctx, C.ui.arumulet.factKicker, CW / 2, divY + 56, 7, 'center', 24, 700);
 
       ctx.textAlign = 'center';
       ctx.fillStyle = INK2;
       ctx.font = '400 ' + factSize + 'px ' + F_SANS;
       for (ti = 0; ti < factLines.length; ti++) {
-        ctx.fillText(factLines[ti], W / 2, divY + 56 + 52 + ti * factLh);
+        ctx.fillText(factLines[ti], CW / 2, divY + 56 + 52 + ti * factLh);
       }
 
-      /* ---------- 사주명식 4기둥 + 오행 분포 (서명 위 먹선 사이) ---------- */
       drawChartMeta(ctx, r.chart, metaY0);
 
-      /* ---------- 서명 · 메타 ---------- */
       var sigMain = r.callName + C.ui.arumulet.signature;
-      var sigY = H - 210;
+      var sigY = CH - 210;
       ctx.font = '700 30px ' + F_SANS;
       var sigW = spacedWidth(ctx, sigMain, 3, 30, 700);
       var sigBrand = C.ui.arumulet.brand;
       ctx.font = '400 25px ' + F_SANS;
       var sigW2 = ctx.measureText(sigBrand).width;
-      var sigX = W / 2 - (sigW + sigW2) / 2;
+      var sigX = CW / 2 - (sigW + sigW2) / 2;
 
       ctx.fillStyle = INK;
       ctx.textAlign = 'left';
@@ -1885,28 +2192,213 @@
       ctx.fillStyle = INK3;
       ctx.font = '400 24px ' + F_SANS;
       ctx.textAlign = 'center';
-      ctx.fillText(birthLine(r, state.input || {}), W / 2, H - 164);
+      ctx.fillText(birthLine(r, state.input || {}), CW / 2, CH - 164);
 
       ctx.fillStyle = 'rgba(30,26,23,0.45)';
       ctx.textAlign = 'left';
-      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, H - 120, 2, 'center', 22, 400);
+      fillSpaced(ctx, C.ui.arumulet.notice, CW / 2, CH - 120, 2, 'center', 22, 400);
 
       ctx.textAlign = 'left';
       state.canvasReady = true;
     });
   }
 
+  /* ---------- 무료 결과 카드 (팔자 고양이 · 팩폭 · 유입 링크) ---------- */
+
+  function shareLink() {
+    if (state.shareInvite && state.reading && state.input) return inviteUrl();
+    return location.origin + location.pathname;
+  }
+
+  function drawShareCard(r) {
+    var canvas = $('#share-card');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var p = r.palja;
+    var art = ELEM_ART[p.elem] || ELEM_ART['수'];
+    var seed = hashStr('share|' + (r.name || '') + '|' + p.name + '|' + (state.input ? state.input.day : ''));
+    var rnd = seededRand(seed || 20261124);
+
+    var imgPromise = loadImage('public/cat-' + art.slug + '-ink.webp').then(function (im) {
+      return im || loadImage('public/cat-' + art.slug + '-ink.png');
+    });
+
+    Promise.all([ensureFonts(), imgPromise]).then(function (res) {
+      var img = res[1];
+      var i;
+
+      if (canvas.width !== CW) canvas.width = CW;
+      if (canvas.height !== CH) canvas.height = CH;
+
+      ctx.clearRect(0, 0, CW, CH);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      paintPaper(ctx, seed);
+      sealStamp(ctx, CW - 206, 140, 84, C.brand.stamp, rnd);
+
+      /* 머리글 */
+      ctx.fillStyle = INK2;
+      fillSpaced(ctx, C.brand.name, CW / 2, 196, 5, 'center', 30, 700);
+      plumDivider(ctx, CW / 2, 232, 132);
+
+      /* 팔자 고양이 */
+      ctx.fillStyle = RED_D;
+      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', CW / 2, 288, 6, 'center', 24, 700);
+
+      var artBottom = catBox(ctx, img, 570, 474, 288);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = INK;
+      ctx.font = '800 100px ' + F_SANS;
+      ctx.fillText(p.name, CW / 2, artBottom + 112);
+
+      ctx.fillStyle = S.ELEM_INK[p.elem];
+      fillSpaced(ctx, p.hanja + ' · ' + p.short, CW / 2, artBottom + 164, 5, 'center', 28, 700);
+
+      /* 한 줄 정의 */
+      var y = artBottom + 216;
+      var defSize = 38, defLh = 57, defLines;
+      for (; defSize >= 26; defSize -= 2) {
+        ctx.font = '700 ' + defSize + 'px ' + F_SANS;
+        defLh = Math.round(defSize * 1.5);
+        defLines = wrapChars(ctx, p.def, 860, 3);
+        if (defLines.length <= 3) break;
+      }
+      ctx.fillStyle = INK;
+      ctx.font = '700 ' + defSize + 'px ' + F_SANS;
+      for (i = 0; i < defLines.length; i++) {
+        ctx.fillText(defLines[i], CW / 2, y + i * defLh);
+      }
+      y += (defLines.length - 1) * defLh + Math.round(defSize * 0.9);
+
+      /* 천기팩폭 띠 */
+      var bandPad = 30, bandTop = y + 28;
+      var bombSize = 32, bombLh = 48, bombLines;
+      ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
+      bombLines = wrapChars(ctx, tidy(p.bomb), 820, 4);
+      var bandH = bandPad + 34 + 16 + bombLines.length * bombLh + bandPad;
+
+      ctx.save();
+      ctx.fillStyle = RED;
+      wobbleRectPath(ctx, 80, bandTop, CW - 80, bandTop + bandH, 2.4, 1.4);
+      ctx.fill();
+      ctx.strokeStyle = RED_D;
+      ctx.lineWidth = 2.4;
+      wobbleRectPath(ctx, 84, bandTop + 4, CW - 84, bandTop + bandH - 4, 1.6, 2.2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#E7D9C4';
+      fillSpaced(ctx, C.ui.arumulet.factKicker, CW / 2, bandTop + bandPad + 18, 7, 'center', 23, 700);
+
+      ctx.fillStyle = PAPER_HI;
+      ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
+      for (i = 0; i < bombLines.length; i++) {
+        ctx.fillText(bombLines[i], CW / 2, bandTop + bandPad + 34 + 16 + i * bombLh + 22);
+      }
+
+      /* 해시태그 · 명식 근거 (유형을 만든 여덟 글자) */
+      ctx.fillStyle = '#4E6349';
+      fillSpaced(ctx, p.tags.join('  '), CW / 2, bandTop + bandH + 56, 1, 'center', 24, 700);
+
+      ctx.fillStyle = INK3;
+      fillSpaced(ctx, p.facts.join('   ·   '), CW / 2, bandTop + bandH + 108, 0.6, 'center', 24, 400);
+
+      /* 아래 - 유입 링크 */
+      var footRule = Math.max(CH - 360, bandTop + bandH + 172);
+      plumDivider(ctx, CW / 2, footRule, 150);
+
+      ctx.fillStyle = INK;
+      fillSpaced(ctx, C.FREE.shareLinkLine, CW / 2, footRule + 62, 2, 'center', 32, 700);
+
+      var link = shareLink();
+      var shown = link.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      var linkSize = 26, linkLines;
+      for (; linkSize >= 18; linkSize -= 1) {
+        ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
+        linkLines = wrapChars(ctx, shown, 830, 2);
+        if (linkLines.length <= 2) break;
+      }
+      ctx.fillStyle = INK2;
+      ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
+      for (i = 0; i < linkLines.length; i++) {
+        ctx.fillText(linkLines[i], CW / 2, footRule + 112 + i * Math.round(linkSize * 1.4));
+      }
+
+      ctx.fillStyle = INK3;
+      ctx.font = '400 23px ' + F_SANS;
+      ctx.fillText(
+        state.shareInvite ? r.callName + C.FREE.shareInviteFooter : C.FREE.shareNoInfo,
+        CW / 2, CH - 132
+      );
+
+      ctx.fillStyle = 'rgba(30,26,23,0.42)';
+      fillSpaced(ctx, C.ui.arumulet.notice, CW / 2, CH - 92, 2, 'center', 21, 400);
+
+      state.shareReady = true;
+    });
+  }
+
   /* ------------------------------------------------------------------ */
-  /* 7. 공유 / 저장                                                     */
+  /* 9. 공유 / 저장                                                     */
   /* ------------------------------------------------------------------ */
 
   function canShareFiles() {
     return !!(navigator.canShare && window.File);
   }
 
+  function bindShare() {
+    $('#share-invite').addEventListener('change', function () {
+      state.shareInvite = $('#share-invite').checked;
+      drawShareCard(state.reading);
+    });
+
+    $('#btn-share-save').addEventListener('click', function () {
+      var canvas = $('#share-card');
+      canvas.toBlob(function (blob) {
+        if (!blob) { toast(C.ui.toast.saveFail); return; }
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        var safe = (state.reading.palja.name || '냥사주').replace(/[^\w가-힣]/g, '');
+        a.href = url;
+        a.download = C.FREE.shareFile + safe + '.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        toast(C.ui.toast.saved);
+        AN.track('result_share', { method: 'save', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+      }, 'image/png');
+    });
+
+    $('#btn-share-share').addEventListener('click', function () {
+      var canvas = $('#share-card');
+      canvas.toBlob(function (blob) {
+        if (!blob) return;
+        var file = new File([blob], C.FREE.shareFile + '.png', { type: 'image/png' });
+        var payload = {
+          files: [file],
+          title: C.brand.name,
+          text: state.reading.palja.name + ' · ' + tidy(state.reading.palja.bomb)
+        };
+        if (navigator.canShare(payload)) {
+          navigator.share(payload).then(function () {
+            AN.track('result_share', { method: 'share', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+          }).catch(function () { });
+        } else {
+          copyText(state.reading.palja.name + ' · ' + tidy(state.reading.palja.bomb)).then(function () {
+            toast(C.ui.toast.shared);
+            AN.track('result_share', { method: 'copy', cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+          });
+        }
+      }, 'image/png');
+    });
+  }
+
   function bindResultActions() {
     $('#btn-copy').addEventListener('click', function () {
-      var text = state.reading ? copySummary(state.reading) : '';
+      var text = state.reading ? state.reading.summary : '';
       copyText(text).then(function () {
         toast(C.ui.toast.copied);
       }).catch(function () {
@@ -1936,26 +2428,27 @@
       canvas.toBlob(function (blob) {
         if (!blob) return;
         var file = new File([blob], C.ui.arumulet.file + '.png', { type: 'image/png' });
-        var payload = { files: [file], title: C.brand.name + ' 부적', text: copySummary(state.reading) };
+        var payload = { files: [file], title: C.brand.name + ' 부적', text: state.reading.summary };
         if (navigator.canShare(payload)) {
-          navigator.share(payload).catch(function () {});
+          navigator.share(payload).catch(function () { });
         } else {
-          copyText(copySummary(state.reading)).then(function () { toast(C.ui.toast.shared); });
+          copyText(state.reading.summary).then(function () { toast(C.ui.toast.shared); });
         }
       }, 'image/png');
     });
 
     $('#btn-again').addEventListener('click', function () {
       if (!state.reading) return;
-      renderResult(state.reading, state.input);
+      renderPaid(state.reading, state.input);
       $('#app').scrollTo({ top: 0, behavior: 'smooth' });
       toast(C.ui.toast.again);
     });
 
     $$('[data-action="back-input"]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        show('screen-input');
-      });
+      btn.addEventListener('click', function () { show('screen-input'); });
+    });
+    $$('[data-action="back-free"]').forEach(function (btn) {
+      btn.addEventListener('click', backToFree);
     });
   }
 
