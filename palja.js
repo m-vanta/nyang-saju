@@ -142,7 +142,7 @@
       strong.count + '개(' + strong.pct + '%)로 제일 세요.' +
       (lackKo
         ? ' ' + josa(lackKo, '은는') + ' 하나도 안 들어왔고요.'
-        : ' ' + josa(S.ELEM_KO[chart.dist.slice().sort(function (a, b) { return a.count - b.count; })[0].elem], '은는') + ' 제일 얇습니다.'));
+        : ' ' + josa(S.ELEM_KO[chart.dist.slice().sort(function (a, b) { return a.count - b.count; })[0].elem], '은는') + ' 제일 얇아요.'));
     essay.push('드러난 십신은 ' + list.slice(0, 3).map(function (x) { return x.t + ' ' + x.n; }).join(' · ') +
       ' 순서고, 그중 ' + josa(top.god, '이가') + ' 제일 크게 돕니다. ' + S.TEN_GROUP[top.god] + '이라, 그게 ' + call + '의 기본값이에요.');
     essay.push(base.read);
