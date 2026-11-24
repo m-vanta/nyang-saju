@@ -631,7 +631,9 @@
   /* --- 무료 : 연애·재물·직업운 미리보기 (1~2줄) ---------------------- */
 
   function previewItems(r) {
-    return ['love', 'money', 'work'].map(function (k) {
+    var order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
+    order.unshift(r.focusKey);
+    return order.map(function (k) {
       var T = C.THEME[k];
       var base = firstSent(fill(r.master.focus[k], r.name), 1);
       var tail = firstSent(fillv(T.elem[r.palja.rel], r), 1);
