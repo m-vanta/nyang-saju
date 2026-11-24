@@ -1546,7 +1546,7 @@
 
   function inviteUrl() {
     var i = state.input || {};
-    var base = location.origin + location.pathname;
+    var base = pageBase();
     return base + '?inviter=' + encodeURIComponent(state.reading.name) +
       '&iy=' + i.year + '&im=' + i.month + '&id=' + i.day +
       '&ih=' + (i.hourIdx == null ? 'none' : i.hourIdx) +
@@ -2376,7 +2376,12 @@
 
   function shareLink() {
     if (state.shareInvite && state.reading && state.input) return inviteUrl();
-    return location.origin + location.pathname;
+    return pageBase();
+  }
+
+  // 주소창이 /index.html 로 끝나도 카드·초대 링크는 깔끔한 폴더 주소로
+  function pageBase() {
+    return location.origin + location.pathname.replace(/index\.html?$/i, '');
   }
 
   function drawShareCard(r, ratio) {
