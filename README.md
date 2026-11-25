@@ -49,6 +49,13 @@ src/render/   Finding → 문장 선택 + 근거 칩 자동 생성
 - **공유**는 `/api/share` → `/r/{code}`(CSPRNG 60bit, 30일 TTL, 폐기 토큰). 서버에는 일간·일지 index만 저장하고, URL·카드에 이름·생년월일·시간·성별·달력이 없습니다.
 - **결제**는 `PaymentState{mode:'preview'}`로 분리했습니다. 미리보기에서는 `payment_complete`를 보내지 않고 “미리보기 잠금 해제”로 말합니다.
 
+### 0-0. v2.3.1 — 조건부 승인 반영 (2026-11-25)
+
+- **원본 QA 성별 정정**: QA06·QA09·QA11을 남성으로 고쳐 대운 순역·간지·십성과 해석을 다시 검증했습니다(QA06·09 순행, QA11 역행). 회귀 검사에 순역·간지·십성 자동 검사를 넣었습니다 — `docs/regression-report-v2.3.md` §9.1.
+- **친구 초대는 ‘준비 중’**: Cloudflare Worker가 배포되기 전까지 `window.NYANG_INVITE_READY`가 false라 초대 버튼이 `친구 초대 · 준비 중`으로 보이고, 누르면 안내 토스트만 나옵니다(`/api/share` 요청 0건, 오류 토스트 없음). 개인정보 URL 폴백은 그대로 없습니다. Worker를 붙일 때 `index.html`의 스위치를 켜면 초대가 열립니다.
+- **숫자 궁합 점수 제거**: 화면·문장 카탈로그에서 `{score}점`을 지웠습니다. 궤도는 **관계 유형 + 일주 근거(일간·일지·천간합·육합·육충)** 로만 말하고, 점수는 1·2·3궤도 배치에만 쓰는 내부 값입니다.
+- **정식 결제 OFF 유지**: `PAYMENTS = "off"`, 미리보기 모드 그대로입니다.
+
 문서: `docs/orbit-engine-analysis.md` · `docs/gyeokguk-singang-proposal.md` · `docs/regression-report-v2.3.md`
 
 ---
@@ -427,7 +434,8 @@ src/render/   Finding → 문장 선택 + 근거 칩 자동 생성
 
 - 천간합(갑기·을경·병신·정임·무계) **+13**, 육합 **+8**, 천간충 **-8**, 육충 **-8** → 18~98로 자름.
 - 궤도: **76점 이상 1궤도(찰떡·귀인)**, **56~75 2궤도(무난·보통)**, **56 미만 3궤도(거리두기·상극)**.
-- 결과는 `{score, orbit, relation, meElem, youElem, tags, hap, yukhap, chung}`.
+- 결과는 `{score, orbit, relation, meElem, youElem, tags, hap, yukhap, chung, evidence}`.
+- **점수는 궤도 배치에만 쓰는 내부 값**입니다. 화면과 고객 데이터로는 숫자를 내지 않고, `orbitDetailParts()`가 `evidence[]`(일간·일지·천간합·육합·육충)를 넘겨 유료 상세·초대 카드에 ‘일주 근거’ 칩으로 보여 줍니다.
 
 ### (2) 궤도 지도 (`renderOrbit`)
 
@@ -455,8 +463,8 @@ src/render/   Finding → 문장 선택 + 근거 칩 자동 생성
 | 기본 예시 | 유진(1994-03-05)·하람(1993-08-21)·소민(1997-05-14)·도윤(1991-01-09) 4명이 1·2·3궤도에 흩어져 첫 화면부터 지도가 보임. `예시` 배지 + `예시로 그려 봤어요` 안내, 개별 삭제 가능. **첫 친구를 올리면 예시는 자동으로 내려감** |
 | 추가 | 이름 + 년/월/일 + 시진 + 성별 → `S.computePillars`로 상대 사주 계산 → `compatibility` → 자동 배치. 최대 9명, 같은 이름·생일은 중복 차단 |
 | 저장 | `localStorage['nyangsaJu.friends.v1']` (없으면 예시 4명으로 시작, 첫 친구를 올리면 예시는 내려감) |
-| 초대 링크 | `?inviter=<이름>&iy=1995&im=4&id=12&ih=6&ic=solar&ig=f` (+음력 `il=1`). `navigator.clipboard`로 복사 |
-| 초대받은 쪽 | 랜딩에 `○○ 님의 초대` 배너, 결과 인연 궤도 위에 **`초대해 준 ○○ 님과의 궁합 N점`** 카드 + `내 궤도에도 올리기`. 깨진 파라미터는 조용히 무시 |
+| 초대 링크 | Worker 배포 전에는 버튼이 **`친구 초대 · 준비 중`**(누르면 안내 토스트, 링크 생성 0건). 배포 뒤(`window.NYANG_INVITE_READY = true`)에는 `POST /api/share` → `…/r/{code}` 주소를 `navigator.clipboard`로 복사 |
+| 초대받은 쪽 | 랜딩에 `○○ 님의 초대` 배너, 인연 궤도 위에 **`초대해 준 ○○ 님과의 궁합`** 카드(유형 + 한 줄 + 일주 근거). 코드에는 이름·생년월일이 없어 궤도에 바로 추가하지 않고, 자기 사주를 넣어야 궁합이 나옴 |
 
 ---
 
@@ -681,14 +689,32 @@ const res = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
 - [ ] OG 이미지(`preview-card.png`) + `og:title` / `og:description` 추가
 - [ ] 결제 전 상세 풀이 비노출 확인 (개발자도구로 DOM 확인)
 - [ ] iOS Safari에서 `canvas.toBlob` / Web Share, SVG `filter`·`clip-path` 동작 확인
-- [ ] 초대 링크가 배포 도메인에서 열리는지 확인 (`location.origin + location.pathname` 기준)
-- [ ] 개인정보: 친구 이름·생년월일은 **브라우저 localStorage에만** 저장되고 서버로 보내지 않음. 초대 링크에는 이름·생년월일이 쿼리로 들어가므로 공유 범위 안내 문구 유지
+- [ ] 초대 링크는 **Worker 배포 뒤에만** 열림 — `wrangler d1 execute … --file=schema.sql` → `wrangler deploy` → `index.html`의 `window.NYANG_INVITE_READY = true`와 `window.NYANG_API`를 켜야 버튼이 ‘준비 중’에서 ‘초대 링크 복사’로 바뀝니다.
+- [ ] 개인정보: 친구 이름·생년월일은 **브라우저 localStorage에만** 저장되고 서버로 보내지 않음. 초대 링크(`/r/{code}`)에는 이름·생년월일·시간·성별이 없고 서버에는 일간·일지 index 두 값만 30일 저장
 - [ ] 다크모드: 현재 라이트 전용
 - [ ] 접근성: 본문 대비 4.5:1 이상, 오행도·궤도 노드는 `aria-label`/`role="button"` + 키보드 Enter/Space로도 열림
 
 ---
 
-## 13. 검증 결과 (2026-11-24 여섯 번째 개정 · v2.2)
+## 13. 검증 결과
+
+### v2.3.1 (2026-11-25) — 조건부 승인 반영
+
+| 층 | 결과 |
+|---|---|
+| `tests/run-regression.mjs` | **117/117** (원본 QA 12명식 + DEV-QA 12 + 경계 14 + 대운 순역·간지·십성·해석 + 궁합·문장·카피) |
+| `tools/check-engine.py` | **17/17** 기준값 일치 · 오행 % 합 100 |
+| `tools/check-type.py` | **9/9** 화면 구간 · 12px 미만 0 |
+| `tools/check-layout.py` | **81/81** · 최소 여백 22.3px · 겹침 0 |
+| `tools/check-orbit.py` | **30/30** · 준비 중 상태·일주 근거·점수 0건 포함 |
+| `tools/check-funnel.py` | **16/16** · `payment_complete` 0건 |
+| `tools/check-v22.py` | **50/50** |
+| `worker/test/` (`node --test`) | **28/28** |
+| `tools/split-paid-copy.mjs --check` | 통과 (클라이언트 `copy.js`에 유료 문장 0) |
+
+원본 QA 성별 정정(QA06·09·11 → 남성)과 대운 재검증 값은 `docs/regression-report-v2.3.md` §9.1에 있다.
+
+### v2.2 (2026-11-24 여섯 번째 개정)
 
 `tools/check-v22.py` — 390px 기본 흐름 + 360/430px 레이아웃, 같은 일간 두 쌍, 시간 미상, 음력 윤달까지 한 번에.
 
@@ -729,7 +755,7 @@ headless Chromium · 430×932 · DPR 2 로 랜딩 → 입력 → 무료 천기(�
 - 지원 범위: 엔진 음양력 **1391~2050**, 절입 시각 표 **1899~2051**, 현재 입력 범위 **1930~올해**.
 - 시주는 폼이 시진 단위라 **시진 한가운데 시각**으로 계산합니다(자시 23:30 = 야자시 관법). 조자시/야자시 논쟁은 반영하지 않았습니다.
 - 기본 명식은 **표준시**입니다. 진태양시(-32분)·균시차·법정 시계는 엔진 옵션으로 남아 있고, 경계를 넘는 경우에만 안내 문구가 뜹니다.
-- 궁합 점수는 **일간 오행 관계 + 천간합/육합/충**만 봅니다. 지지 전체·용신·대운까지 넣으면 정밀해지지만, 1,900원 재미 상품에서는 지금 수준이 설명하기 쉽습니다.
+- 궁합은 **일간 오행 관계 + 천간합/육합/충**만 봅니다. 지지 전체·용신·대운까지 넣으면 정밀해지지만, 1,900원 재미 상품에서는 지금 수준이 설명하기 쉽습니다. 화면에는 점수 대신 **관계 유형과 일주 근거**만 내보냅니다.
 - 궤도 친구는 **이 브라우저에만** 남습니다(서버 없음). 기기를 바꾸면 예시부터 다시 시작합니다.
 - `vendor/manseryeok.js`를 올릴 때는 npm `@fullstackfamily/manseryeok`의 `dist/index.mjs`를 받아 마지막 `export { … };`를 `return { … };`로 바꾸고 IIFE로 감싸면 됩니다.
 - 도사의 말투는 `copy.js`(동적·일간별)와 `index.html`(고정 라벨) 두 곳에서 고칩니다. 계산은 `saju.js`, 엔진은 `vendor/`, 팔자 고양이 조립은 `palja.js`.

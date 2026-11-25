@@ -319,6 +319,17 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
 .btn--line:hover { border-color: var(--ink); }
 .btn--full { width: 100%; }
 
+/* 준비 중 버튼 — 누르면 안내만 하고 아무 것도 만들지 않는다 */
+.btn.is-pending {
+  border-style: dashed;
+  border-color: var(--rule);
+  color: var(--ink-3);
+}
+.btn.is-pending:hover { border-color: var(--rule); }
+
+.check.is-pending { color: var(--ink-3); cursor: default; }
+.check.is-pending .check__box { border-style: dashed; border-color: var(--rule); }
+
 /* 황토 인장 버튼 */
 .gold-btn {
   position: relative;
@@ -2468,6 +2479,24 @@ body.is-teaser .toast { bottom: 118px; }
 .invite__meta { font-size: 13px; line-height: 1.6; color: var(--ink-2); margin-top: 6px; }
 .invite__meta b { color: var(--ink); }
 .invite__text { font-size: 15px; line-height: 1.72; color: var(--ink-2); margin-top: 8px; }
+.invite__basis {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.invite__basis b {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin-right: 7px;
+}
+.invite__basis i { font-style: normal; color: var(--ink-3); }
 .invite .btn { width: 100%; margin-top: 12px; }
 
 .invite-bar {
@@ -3257,13 +3286,39 @@ body.is-teaser .toast { bottom: 118px; }
   padding: 1px 5px 0;
 }
 
-.orbit__detail-score {
-  margin-left: auto;
+/* 관계 해석의 명리 근거 — 일간·일지 한 기둥씩 맞춘 값 (점수는 화면에 없다) */
+.orbit__detail-basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 7px 0 0;
+  padding: 6px 9px 7px;
+  background: rgba(30, 26, 23, 0.045);
+  border-left: 3px solid var(--ink-3);
   font-family: var(--serif);
-  font-size: 13px;
+  font-size: var(--fs-cap);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.orbit__detail-basis b {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
 }
 
+.orbit__detail-basis-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1px 6px;
+}
+
+.orbit__detail-basis-list span { white-space: nowrap; }
+.orbit__detail-basis-list i { font-style: normal; color: var(--ink-3); }
 .orbit__detail-text {
   font-family: var(--serif);
   font-size: var(--fs-body);

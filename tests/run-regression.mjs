@@ -38,6 +38,7 @@ for (const f of FILES) {
 }
 
 const S = sandbox.NyangSaju;
+const T = sandbox.NyangTables;
 const D = sandbox.NyangDomain;
 const PD = sandbox.NyangPeriod;
 const R = sandbox.NyangRules;
@@ -66,6 +67,35 @@ function readingOf(p, asOf) {
   const name = (p.input && p.input.name) || p.name || '민지';
   return { chart: c, period, free: RD.buildFree(c, name), paid: RD.buildPaidTraits(c, name), themes: RD.buildThemes(c, period, name, (p.input && p.input.focus) || 'love'), patterns: RD.buildPatterns(c, period, name) };
 }
+/* 고전 십성표 — 엔진(D.tenGod)을 부르지 않고 오행 생극·음양만으로 다시 센다.
+   일간 기준: 같은 오행 비견/겁재 · 내가 낳으면 식신/상관 · 내가 누르면 편재/정재 ·
+   나를 누르면 편관/정관 · 나를 낳으면 편인/정인 (음양 같으면 앞, 다르면 뒤). */
+const STEM_ELEM_TBL = ['목', '목', '화', '화', '토', '토', '금', '금', '수', '수'];
+const MAKES_TBL = { 목: '화', 화: '토', 토: '금', 금: '수', 수: '목' };
+const KILLS_TBL = { 목: '토', 화: '금', 토: '수', 금: '목', 수: '화' };
+function tenGodByRule(dayStem, otherStem) {
+  const me = STEM_ELEM_TBL[dayStem], you = STEM_ELEM_TBL[otherStem];
+  const same = (dayStem % 2) === (otherStem % 2);
+  if (me === you) return same ? '비견' : '겁재';
+  if (MAKES_TBL[me] === you) return same ? '식신' : '상관';
+  if (KILLS_TBL[me] === you) return same ? '편재' : '정재';
+  if (KILLS_TBL[you] === me) return same ? '편관' : '정관';
+  return same ? '편인' : '정인';
+}
+function cycleIndex(stem, branch) {
+  for (let i = 0; i < 60; i++) if (i % 10 === stem && i % 12 === branch) return i;
+  return -1;
+}
+function fmtYmd(o) {
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return o.y + '.' + p(o.m) + '.' + p(o.d);
+}
+function wishForward(chart, gender) {
+  const yangYear = chart.pillars.year.stem % 2 === 0;   // 갑·병·무·경·임 = 양
+  const male = gender === '남성' || gender === '남';
+  return (yangYear && male) || (!yangYear && !male);      // 양남·음녀 순행
+}
+
 function walkText(obj, out) {
   if (typeof obj === 'string') { out.push(obj); return; }
   if (!obj || typeof obj !== 'object') return;
@@ -106,7 +136,75 @@ for (const p of qaOriginal.profiles) {
     }
     return r.chart.flags.hourUnknown ? '여섯 글자' : '해당 없음';
   });
+  check(p.id, '대운 순역이 양남음녀 규칙과 같다', () => {
+    const c = chartOf(p);
+    const want = wishForward(c, p.input.gender);
+    assert(c.daewoon, '대운 없음');
+    assert(c.daewoon.forward === want,
+      '순역 ' + (c.daewoon.forward ? '순행' : '역행') + ' ≠ 규칙 ' + (want ? '순행' : '역행') +
+      ' (' + c.pillars.year.ko + '·' + p.input.gender + ')');
+    if (p.expected.daewoonForward !== undefined) {
+      assert(c.daewoon.forward === p.expected.daewoonForward, '기대값 순역 불일치');
+    }
+    // 순행이면 다음 절, 역행이면 지난 절까지의 날수(3일=1년)로 대운이 열린다
+    const open = c.daewoon.startTerm.date, birth = fmtYmd(c.solar);
+    assert(c.daewoon.forward ? open > birth : open < birth, '대운 시작 절 방향이 순역과 반대: ' + open + ' / ' + birth);
+    assert(c.daewoon.startAge >= 0 && c.daewoon.startAge <= 10, '대운수 범위: ' + c.daewoon.startAge);
+    return (c.daewoon.forward ? '순행' : '역행') + ' · ' + c.daewoon.startAgeLabel + ' · ' + c.daewoon.startTerm.name + ' ' + open;
+  });
+  check(p.id, '대운 간지가 월주에서 순역으로 한 칸씩 간다', () => {
+    const c = chartOf(p);
+    const dw = c.daewoon;
+    const base = cycleIndex(c.pillars.month.stem, c.pillars.month.branch);
+    assert(base >= 0, '월주 60갑자 없음');
+    assert(dw.list.length === 10, '대운 10개 아님');
+    for (let k = 1; k <= 10; k++) {
+      const want = ((base + (dw.forward ? k : -k)) % 60 + 60) % 60;
+      const got = dw.list[k - 1];
+      eq([got.stem, got.branch], [want % 10, want % 12], k + '번째 대운 간지');
+      assert(got.fromMs > c.daewoon.startMs - 1, k + '번째 시작이 대운 시작 전');
+      if (k > 1) assert(got.fromMs > dw.list[k - 2].fromMs, k + '번째 시작 순서');
+    }
+    return c.pillars.month.ko + ' → ' + dw.list[0].ko + ' … ' + dw.list[9].ko;
+  });
+  check(p.id, '대운 십성·현재 대운이 고전표와 같다', () => {
+    const c = chartOf(p);
+    const dw = c.daewoon;
+    dw.list.forEach((d, i) => {
+      eq(d.stemTen, tenGodByRule(c.dayMaster, d.stem), (i + 1) + '번째 천간 십성');
+      eq(d.branchTen, tenGodByRule(c.dayMaster, T.HIDDEN[d.branch][0][0]), (i + 1) + '번째 지지 십성');
+    });
+    const per = PD.period(c, ASOF);
+    assert(per.daewoon, '조회 시점 대운 없음');
+    const asofMs = new Date(ASOF).getTime();
+    assert(asofMs >= per.daewoon.fromMs && asofMs < per.daewoon.toMs, '조회 시점이 대운 구간 밖');
+    eq(per.daewoon.ko, p.expected.daewoon, '현재 대운 간지');
+    eq(per.daewoon.stemTen, p.expected.daewoonTen.stem, '현재 대운 천간 십성');
+    eq(per.daewoon.branchTen, p.expected.daewoonTen.branch, '현재 대운 지지 십성');
+    eq(per.daewoon.stemTen, tenGodByRule(c.dayMaster, per.daewoon.stem), '현재 천간 십성(고전표)');
+    eq(per.daewoon.branchTen, tenGodByRule(c.dayMaster, T.HIDDEN[per.daewoon.branch][0][0]), '현재 지지 십성(고전표)');
+    return per.daewoon.hanja + ' ' + per.daewoon.stemTen + '/' + per.daewoon.branchTen + ' · ' + per.daewoon.ageRange.join('~');
+  });
+  check(p.id, '대운 해석이 현재 대운 천간·지지 십성을 모두 말한다', () => {
+    const r = readingOf(p);
+    const dw = r.period.daewoon;
+    const text = r.themes.map((t) => t.body).join(' ') + ' ' + r.patterns.map((x) => x.text + ' ' + x.cut).join(' ');
+    assert(text.includes('대운 ' + dw.hanja), '현재 대운 간지 언급 없음: ' + dw.hanja);
+    assert(text.includes(dw.stemTen), '천간 십성 언급 없음: ' + dw.stemTen);
+    assert(text.includes(dw.branchTen), '지지 십성 언급 없음: ' + dw.branchTen);
+    return dw.hanja + ' ' + dw.stemTen + '/' + dw.branchTen;
+  });
 }
+
+check('QA', '십성표 대조 — 병화·계수 정관, 을목·계수 편인, 기토·경금 상관', () => {
+  eq(tenGodByRule(2, 9), '정관', '병화 ↔ 계수');
+  eq(tenGodByRule(1, 9), '편인', '을목 ↔ 계수');
+  eq(tenGodByRule(5, 6), '상관', '기토 ↔ 경금');
+  eq(tenGodByRule(0, 0), '비견', '갑목 ↔ 갑목');
+  eq(tenGodByRule(0, 1), '겁재', '갑목 ↔ 을목');
+  eq(tenGodByRule(3, 2), '겁재', '정화 ↔ 병화');
+  return '고전표 6쌍';
+});
 
 check('QA', '같은 명식(QA07=QA08)은 이름이 달라도 같은 문장', () => {
   const a = readingOf({ input: { year: 2024, month: 2, day: 10, calendar: 'solar', hourIdx: 6, name: 'QA07', focus: 'love' } });
@@ -248,6 +346,34 @@ check('T12', '공유 URL·분석로그에 개인정보 0', () => {
   assert(/bombPublic/.test(app), '공유 카드 팩폭에 닉네임 치환 없음');
   assert(!/inviter\s*:/.test(an), 'analytics.js 가 inviter 속성을 보냄');
   return 'URL 조립 없음 · 카드 bombPublic';
+});
+
+check('COPY', '궤도 화면에 숫자 궁합 점수를 만드는 문장·전달이 없다', () => {
+  const copy = readFileSync(resolve(appDir, 'copy.js'), 'utf8');
+  assert(!/\{score\}/.test(copy), 'copy.js 에 {score} 템플릿');
+  assert(!/scoreLabel/.test(copy), 'copy.js 에 scoreLabel');
+  const app = readFileSync(resolve(appDir, 'app.js'), 'utf8');
+  const parts = app.slice(app.indexOf('function orbitDetailParts'), app.indexOf('function orbitEvidenceHtml'));
+  assert(parts.length > 100, 'orbitDetailParts 구간 없음');
+  assert(!/score/.test(parts), 'orbitDetailParts 가 score 를 넘김');
+  assert(/evidence/.test(parts), 'orbitDetailParts 에 evidence 없음');
+  assert(/orbitEvidenceHtml/.test(app.slice(app.indexOf('function renderOrbitDetail'))), '상세에 근거 칩 렌더 없음');
+  return '점수 템플릿 0 · 근거 칩 전달';
+});
+
+check('INVITE', '친구 초대는 Worker 배포 전 기본 닫힘 · 개인정보 URL 폴백 없음', () => {
+  const app = readFileSync(resolve(appDir, 'app.js'), 'utf8');
+  const html = readFileSync(resolve(appDir, 'index.html'), 'utf8');
+  assert(/function inviteReady\(\) \{\s*return window\.NYANG_INVITE_READY === true;/.test(app),
+    'inviteReady 기본값이 열림');
+  const htmlLive = html.replace(/<!--[\s\S]*?-->/g, '');   // 안내용 주석은 빼고 실제 스크립트만 본다
+  assert(!/NYANG_INVITE_READY\s*=\s*true/.test(htmlLive), 'index.html 이 초대를 켜 둠');
+  const copyInvite = app.slice(app.indexOf('function copyInvite'), app.indexOf('function trackInvite'));
+  assert(/if \(!inviteReady\(\)\)/.test(copyInvite), '초대 복사에 준비 중 가드 없음');
+  assert(!/location\.search|inviter=|iy=/.test(copyInvite), '초대에 개인정보 URL 폴백');
+  assert(/if \(!inviteReady\(\)\) return;/.test(app.slice(app.indexOf('function parseInvite'), app.indexOf('function parseInvite') + 400)),
+    '준비 중에 코드 조회를 막지 않음');
+  return '기본 준비 중 · 링크 조회 안 함';
 });
 
 check('T13', '서머타임: 1988-07-01 00:10 → 병진/무자', () => {

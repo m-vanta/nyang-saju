@@ -10,6 +10,9 @@ headless Chromium(430×932)에서 실제로 돌려 확인한다.
 5. 무료 사용자도 쓰고, 좋고 나쁨(점수) 대신 관계 특성(충전냥·불꽃냥·거울냥·동료냥·티격태격냥)으로 보이는가
 6. 초대 링크 복사 → 그 링크로 들어온 사람이 자기 정보를 넣으면 궁합 카드가 뜨는가
 7. 깨진 초대 파라미터는 조용히 무시하는가
+8. Worker 가 없을 때(기본값) 친구 초대 버튼이 '준비 중'으로 보이고,
+   누르면 오류 토스트가 아니라 준비 중 안내가 나오며 링크를 만들지 않는가
+9. 유료 궤도 상세에 점수 대신 일주 근거(일간·일지)가 붙는가
 
     python3 tools/check-orbit.py
 """
@@ -33,6 +36,7 @@ import json
 class Quiet(http.server.SimpleHTTPRequestHandler):
     """정적 파일 + 공유 코드 API 목(mock). 실제 Worker 없이 클라이언트 경로를 검사한다."""
     share = {"ds": 6, "db": 6}
+    share_posts = 0
 
     def log_message(self, *a):
         pass
@@ -48,6 +52,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path.rstrip("/") == "/api/share":
+            Quiet.share_posts += 1
             n = int(self.headers.get("Content-Length") or 0)
             try:
                 data = json.loads(self.rfile.read(n) or b"{}")
@@ -132,6 +137,8 @@ def main():
             ctx.grant_permissions(["clipboard-read", "clipboard-write"])
         except Exception:  # noqa: BLE001
             pass
+        # 테스트는 Worker 배포 상태를 흉내 낸다 (라이브 기본값은 '준비 중')
+        ctx.add_init_script("window.NYANG_INVITE_READY = true;")
         page = ctx.new_page()
         errs = []
         page.on("console", lambda m: errs.append("console " + m.type + ": " + m.text)
@@ -254,13 +261,47 @@ def main():
           types: [...document.querySelectorAll('.orbit__detail-type')].map(n => n.textContent.trim()),
           text: (document.querySelector('.orbit__detail-text') || {}).textContent || '',
           advice: [...document.querySelectorAll('.orbit__detail-advice')].length,
-          lockHidden: document.getElementById('orbit-lock').hidden
+          lockHidden: document.getElementById('orbit-lock').hidden,
+          score: (document.getElementById('orbit-detail').innerText.match(/[0-9]+점/g) || []).length,
+          basis: document.querySelectorAll('.orbit__detail-basis').length,
+          basisText: (document.querySelector('.orbit__detail-basis') || {textContent: ''}).textContent.replace(/\\s+/g, ' ').trim()
         })""")
         expect("유료 궤도 상세 목록", detail["count"] >= 1 and detail["advice"] >= 1, str(detail["types"]))
         expect("상세 풀이에 관계 유형 문장", len(detail["text"]) > 60, detail["text"][:60])
         expect("결제 뒤 무료 화면 잠금 문구 숨김", detail["lockHidden"] is True)
+        expect("상세에 점수 없이 일주 근거", detail["score"] == 0 and detail["basis"] >= 1
+               and "일간" in detail["basisText"] and "일지" in detail["basisText"],
+               f'점수 {detail["score"]}건 · 근거 {detail["basis"]}곳 · {detail["basisText"][:60]}')
 
         expect("콘솔 에러 없음", not errs, str(errs[:3]))
+
+        # Worker 가 아직 없을 때의 기본값 — 버튼이 '준비 중'이고 누르면 안내만
+        plain = browser.new_context(viewport={"width": 430, "height": 932}, device_scale_factor=2)
+        pg = plain.new_page()
+        perrs = []
+        pg.on("console", lambda m: perrs.append("console " + m.type + ": " + m.text)
+              if m.type == "error" else None)
+        pg.on("pageerror", lambda e: perrs.append("pageerror: " + str(e)))
+        posts_before = Quiet.share_posts
+        pg.goto(BASE + "?r=TESTCODE1234", wait_until="networkidle")
+        pg.evaluate("() => { try { localStorage.clear(); } catch (e) {} }")
+        pg.reload(wait_until="networkidle")
+        to_free(pg, "민지", 1995, 4, 12)
+        label = pg.inner_text("#btn-invite")
+        expect("준비 중: 버튼 문구", "준비 중" in label
+               and pg.get_attribute("#btn-invite", "aria-describedby") == "orbit-invite-hint", label)
+        expect("준비 중: 안내 문구", "준비 중" in pg.inner_text("#orbit-invite-hint"),
+               pg.inner_text("#orbit-invite-hint")[:50])
+        expect("준비 중: 카드 초대 토글 잠금", pg.is_disabled("#share-invite")
+               and "준비 중" in pg.inner_text("#share-invite-label"), pg.inner_text("#share-invite-label"))
+        expect("준비 중: 코드 조회 시도 없음(초대 배너 안 뜸)", not pg.is_visible("#invite-banner"))
+        pg.click("#btn-invite")
+        pg.wait_for_timeout(500)
+        toast = pg.inner_text("#toast") if pg.query_selector("#toast") else ""
+        expect("준비 중: 클릭은 안내 토스트", "준비 중" in toast and "못했" not in toast, toast[:60])
+        expect("준비 중: 공유 코드 요청 0건 · 콘솔 에러 0건", Quiet.share_posts == posts_before and not perrs,
+               f"posts={Quiet.share_posts - posts_before} errs={perrs[:2]}")
+        plain.close()
         browser.close()
 
     httpd.shutdown()

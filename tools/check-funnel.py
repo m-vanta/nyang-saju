@@ -96,6 +96,8 @@ def main():
             ctx.grant_permissions(["clipboard-read", "clipboard-write"])
         except Exception:  # noqa: BLE001
             pass
+        # 친구 초대(공유 코드)는 Worker 배포 뒤에 열린다 — 여기서는 배포된 상태를 흉내 낸다
+        ctx.add_init_script("window.NYANG_INVITE_READY = true;")
 
         # 초대 링크로 들어온 경우의 page_view
         invite = "?r=TESTCODE1234"

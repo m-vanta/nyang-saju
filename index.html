@@ -672,10 +672,10 @@
           </div>
 
           <div class="orbit__invite-row">
-            <button type="button" class="btn btn--line" id="btn-invite">친구 초대 링크 복사</button>
+            <button type="button" class="btn btn--line is-pending" id="btn-invite" aria-describedby="orbit-invite-hint">친구 초대 · 준비 중</button>
             <button type="button" class="btn btn--line" id="btn-invite-share" hidden>초대 링크 공유</button>
           </div>
-          <p class="orbit__hint" id="orbit-invite-hint">링크를 받은 친구가 자기 사주를 보면, 그 친구와의 궁합이 같이 나와요.</p>
+          <p class="orbit__hint" id="orbit-invite-hint">친구 초대 링크는 아직 준비 중이에요. 그동안은 친구 이름과 생년월일로 궤도에 직접 올려 보실 수 있어요.</p>
           <p class="orbit__lock" id="orbit-lock">궤도에 오른 사람마다의 상세 관계 해석은 복채 1,900원이에요.</p>
         </section>
 
@@ -866,6 +866,10 @@
   </div>
 </div>
 
+<!-- 서버(Cloudflare Worker)를 붙일 때: 아래 주석을 풀고 주소를 적습니다.
+     NYANG_API 는 결제·공유 코드 서버 주소, NYANG_INVITE_READY 는 친구 초대 열림 스위치입니다.
+<script>window.NYANG_API = 'https://nyang-saju.<account>.workers.dev'; window.NYANG_INVITE_READY = true;</script>
+-->
 <script src="vendor/manseryeok.js"></script>
 <script src="src/domain/tables.js"></script>
 <script src="src/domain/chart.js"></script>

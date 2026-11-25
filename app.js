@@ -425,6 +425,14 @@
     t._timer = setTimeout(function () { t.classList.remove('is-on'); }, 2800);
   }
 
+  /* 친구 초대(공유 코드)는 Cloudflare Worker 의 /api/share 가 있어야 열린다.
+     Worker 를 배포하기 전에는 index.html 에서 window.NYANG_INVITE_READY 를
+     true 로 두지 않으므로 기본값은 '준비 중' 이다. 준비 중에는 링크를 만들려
+     시도하지 않고(개인정보 URL 폴백도 없다) 안내만 한다. */
+  function inviteReady() {
+    return window.NYANG_INVITE_READY === true;
+  }
+
   /* ------------------------------------------------------------------ */
   /* 3. 제출 → 무료 천기                                                */
   /* ------------------------------------------------------------------ */
@@ -710,8 +718,11 @@
 
     // 무료 결과 카드
     $('#share-sub').textContent = C.FREE.shareSub;
-    $('#share-invite-label').textContent = C.FREE.shareInvite;
-    $('#share-invite-hint').textContent = fill(C.FREE.shareInviteHint);
+    var readyShare = inviteReady();
+    $('#share-invite-label').textContent = readyShare ? C.FREE.shareInvite : C.FREE.shareInvitePending;
+    $('#share-invite-hint').textContent = readyShare ? fill(C.FREE.shareInviteHint) : C.FREE.shareInviteHintPending;
+    $('#share-invite').disabled = !readyShare;
+    $('#share-invite').closest('.share__opt').classList.toggle('is-pending', !readyShare);
     $('#btn-share-save').textContent = C.FREE.shareSave;
     $('#btn-share-share').textContent = C.FREE.shareShare;
     $('#btn-share-share').hidden = !canShareFiles();
@@ -730,9 +741,14 @@
     $('#orbit-sub').textContent = C.FREE.orbitSub;
     $('#orbit-type-kicker').textContent = C.FREE.orbitTypeKicker;
     $('#orbit-lock').textContent = C.FREE.orbitLock;
-    $('#orbit-invite-hint').textContent = fill(C.orbit.inviteHint);
-    $('#btn-invite').textContent = C.orbit.inviteBtn;
-    $('#btn-invite-share').hidden = !canShareFiles();
+    var inviteOn = inviteReady();
+    $('#orbit-invite-hint').textContent = inviteOn ? fill(C.orbit.inviteHint) : C.orbit.invitePendingHint;
+    $('#btn-invite').textContent = inviteOn ? C.orbit.inviteBtn : C.orbit.invitePendingBtn;
+    $('#btn-invite').classList.toggle('is-pending', !inviteOn);
+    // aria-disabled 는 누름 자체를 막아 안내가 안 나가므로 쓰지 않는다. 이름과 안내 문구로 상태를 알린다.
+    if (inviteOn) $('#btn-invite').removeAttribute('aria-describedby');
+    else $('#btn-invite').setAttribute('aria-describedby', 'orbit-invite-hint');
+    $('#btn-invite-share').hidden = !inviteOn || !canShareFiles();
     renderOrbit();
   }
 
@@ -1278,6 +1294,7 @@
   }
 
   // 유료: 상세 해석 + 이렇게
+  // 점수(내부 궤도 배치용)는 넘기지 않는다 — 화면에는 유형과 명리 근거만.
   function orbitDetailParts(item) {
     var T = typeOf(item.compat);
     var detail = typeFill(T.detail, item);
@@ -1287,11 +1304,20 @@
     return {
       name: item.f.name,
       type: T.name,
-      score: item.compat.score,
       detail: detail,
       advice: typeFill(T.advice, item),
-      tags: item.compat.tags
+      tags: item.compat.tags,
+      evidence: item.compat.evidence
     };
+  }
+
+  // 일주 한 기둥 대 한 기둥이라는 것을 그대로 보여 주는 근거 칩
+  function orbitEvidenceHtml(item) {
+    var ev = (item.compat && item.compat.evidence) || [];
+    if (!ev.length) return '';
+    return '<p class="orbit__detail-basis"><b>일주 근거</b><span class="orbit__detail-basis-list">' +
+      ev.map(function (e) { return '<span>' + hanjaize(esc(e.text)) + '</span>'; }).join('<i>·</i>') +
+      '</span></p>';
   }
 
   function renderOrbit() {
@@ -1408,6 +1434,7 @@
       return '<li><div class="orbit__detail-top">' +
         '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>예시</i></i>' : '') + '</span>' +
         '<span class="orbit__detail-type">' + esc(it.type) + '</span></div>' +
+        orbitEvidenceHtml(d) +
         '<p class="orbit__detail-text">' + hanjaize(it.detail) + '</p>' +
         '<p class="orbit__detail-advice">' + hanjaize(it.advice) + '</p></li>';
     }).join('');
@@ -1432,6 +1459,9 @@
       '<h4 class="invite__title">' + esc(C.orbit.inviteLanded.replace(/\{name\}/g, name)) + '</h4>' +
       '<p class="invite__meta">내 궤도에서 ' + esc(name) + ' 님은 <b>' + typeOf(item.compat).name + ' · ' + orbitName(item.compat.orbit) + '</b></p>' +
       '<p class="invite__text">' + hanjaize(state.paid ? orbitDetailParts(item).detail : orbitLine(item)) + '</p>' +
+      '<p class="invite__basis"><b>일주 근거</b><span>' + item.compat.evidence.map(function (e) {
+        return hanjaize(esc(e.text));
+      }).join('<i>·</i>') + '</span></p>' +
       (already || state.invite.code ? '' : '<button type="button" class="btn btn--line" data-invite-add>' + C.orbit.inviteAdd + '</button>');
     box.hidden = false;
   }
@@ -1480,6 +1510,8 @@
 
   /* /r/{code} 또는 ?r={code} 로 들어온 경우 — 이름·생년월일 없이 일간·일지만 받는다 */
   function parseInvite() {
+    // Worker 가 배포되기 전에는 코드 조회를 시도하지 않는다(서버 없음이 콘솔 오류로 남지 않게)
+    if (!inviteReady()) return;
     var code = null;
     var m = location.pathname.match(/\/r\/([A-Za-z0-9_-]{6,})/);
     if (m) code = m[1];
@@ -1675,18 +1707,20 @@
 
   function copyInvite(method) {
     if (!state.reading || !state.input) return;
+    if (!inviteReady()) { toast(C.orbit.invitePendingToast); return; }
     ensureShareCode().then(function () {
       return copyText(inviteUrl());
     }).then(function () {
       toast(C.orbit.copied);
       trackInvite(method || 'copy');
     }).catch(function () {
-      toast('공유 코드를 만들지 못했어요. 서버에 연결되지 않아 링크를 만들지 않았어요.');
+      toast(C.orbit.inviteFailToast);
     });
   }
 
   function shareInvite() {
     if (!state.reading || !state.input) return;
+    if (!inviteReady()) { toast(C.orbit.invitePendingToast); return; }
     ensureShareCode().then(function () {
       var url = inviteUrl();
       var payload = { title: C.brand.name, text: C.orbit.inviteBody.replace(/\{name\}/g, '친구'), url: url };
@@ -1695,7 +1729,7 @@
       }
       return copyText(url).then(function () { toast(C.orbit.copied); trackInvite('share'); });
     }).catch(function () {
-      toast('공유 코드를 만들지 못했어요. 서버에 연결되지 않아 링크를 만들지 않았어요.');
+      toast(C.orbit.inviteFailToast);
     });
   }
 

@@ -3,8 +3,8 @@
     "kind": "qa-original",
     "extractedFrom": "apps/nyang-saju/qa-original/*-free.txt·*-detail.txt·*-orbit*.txt·*-share.txt",
     "asOf": "2026-11-25T10:00:00+09:00",
-    "note": "원본 QA 스크린샷의 화면 텍스트에서 이름·생년월일·시진·관심운세와 관측값을 옮겼다. 성별은 화면에 없어 앱 기본값(여성)으로 두었다 — 대운 순역에만 영향.",
-    "genderAssumption": "여성(화면 미표시, 앱 기본값)"
+    "note": "원본 QA 스크린샷의 화면 텍스트에서 이름·생년월일·시진·관심운세와 관측값을 옮겼다. 화면에 성별이 없어 앱 기본값(여성)으로 두었으나, QA06·QA09·QA11은 남성으로 확인되어 남성으로 고쳤다 — 대운 순역·대운 간지·십성에 영향.",
+    "genderAssumption": "여성(화면 미표시, 앱 기본값) · QA06·QA09·QA11은 남성(확인)"
   },
   "profiles": [
     {
@@ -51,6 +51,7 @@
         ],
         "ten": "정인 2 · 비견 1 · 겁재 1 · 정재 1 · 정관 1 · 편인 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "기묘",
         "daewoonTen": {
           "stem": "겁재",
@@ -108,6 +109,7 @@
         ],
         "ten": "겁재 1 · 정재 1 · 정관 1 · 편인 1 · 정인 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "기묘",
         "daewoonTen": {
           "stem": "겁재",
@@ -169,6 +171,7 @@
         ],
         "ten": "정재 2 · 겁재 1 · 편재 1 · 정관 1 · 편인 1 · 정인 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "기묘",
         "daewoonTen": {
           "stem": "겁재",
@@ -226,6 +229,7 @@
         ],
         "ten": "편인 2 · 비견 1 · 겁재 1 · 식신 1 · 편재 1 · 편관 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "병인",
         "daewoonTen": {
           "stem": "겁재",
@@ -280,6 +284,7 @@
         ],
         "ten": "정관 2 · 겁재 1 · 상관 1 · 정재 1 · 편인 1 · 정인 1",
         "seun": "병오",
+        "daewoonForward": false,
         "daewoon": "을축",
         "daewoonTen": {
           "stem": "편관",
@@ -304,7 +309,7 @@
         "day": 29,
         "calendar": "solar",
         "hourIdx": 4,
-        "gender": "여성",
+        "gender": "남성",
         "focus": "money"
       },
       "observed": {
@@ -339,10 +344,11 @@
         ],
         "ten": "편재 2 · 비견 1 · 식신 1 · 편관 1 · 정관 1 · 편인 1",
         "seun": "병오",
-        "daewoon": "정해",
+        "daewoonForward": true,
+        "daewoon": "계사",
         "daewoonTen": {
-          "stem": "겁재",
-          "branch": "편관"
+          "stem": "정관",
+          "branch": "비견"
         }
       },
       "defects": [
@@ -396,6 +402,7 @@
         ],
         "ten": "비견 2 · 편재 2 · 식신 1 · 상관 1 · 편관 1",
         "seun": "병오",
+        "daewoonForward": false,
         "daewoon": "을축",
         "daewoonTen": {
           "stem": "겁재",
@@ -453,6 +460,7 @@
         ],
         "ten": "비견 2 · 편재 2 · 식신 1 · 상관 1 · 편관 1",
         "seun": "병오",
+        "daewoonForward": false,
         "daewoon": "을축",
         "daewoonTen": {
           "stem": "겁재",
@@ -477,7 +485,7 @@
         "day": 8,
         "calendar": "solar",
         "hourIdx": 11,
-        "gender": "여성",
+        "gender": "남성",
         "focus": "work"
       },
       "observed": {
@@ -510,10 +518,11 @@
         ],
         "ten": "정재 2 · 정관 2 · 식신 1 · 편재 1 · 정인 1",
         "seun": "병오",
-        "daewoon": "병진",
+        "daewoonForward": true,
+        "daewoon": "계해",
         "daewoonTen": {
-          "stem": "상관",
-          "branch": "정재"
+          "stem": "편인",
+          "branch": "정인"
         }
       },
       "defects": [],
@@ -562,6 +571,7 @@
         ],
         "ten": "편재 3 · 비견 1 · 식신 1 · 상관 1 · 정인 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "계사",
         "daewoonTen": {
           "stem": "식신",
@@ -586,7 +596,7 @@
         "day": 16,
         "calendar": "solar",
         "hourIdx": 8,
-        "gender": "여성",
+        "gender": "남성",
         "focus": "year"
       },
       "observed": {
@@ -621,10 +631,11 @@
         ],
         "ten": "정인 2 · 식신 1 · 상관 1 · 편재 1 · 정재 1 · 편관 1",
         "seun": "병오",
-        "daewoon": "을미",
+        "daewoonForward": false,
+        "daewoon": "경인",
         "daewoonTen": {
-          "stem": "편관",
-          "branch": "비견"
+          "stem": "상관",
+          "branch": "정관"
         }
       },
       "defects": [
@@ -678,6 +689,7 @@
         ],
         "ten": "정인 3 · 정관 2 · 겁재 1 · 정재 1",
         "seun": "병오",
+        "daewoonForward": true,
         "daewoon": "을해",
         "daewoonTen": {
           "stem": "겁재",
