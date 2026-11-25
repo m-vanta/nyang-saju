@@ -88,7 +88,7 @@ node tests/ai-compare/run.mjs --mode score --in out/<runId>
 
 ### 1. 액자 없이 한지로 번지는 일러스트
 
-- **무료 결과 히어로**: `border`·`background`·`overflow: hidden` 사각 박스를 없앴습니다. `.scene` 이  `.screen` 패딩(34px)을 음수 마진으로 넘어 **화면 폭 100%**(390px 기기에서 정확히 390px)로 펼쳐지고, `.app` 의 팔각 클립과 `mask-image` 그라데이션(위 10%·아래 84%에서 사라짐, 좌우 10%)으로 가장자리가 종이에 스며듭니다.
+- **무료 결과 히어로**: `border`·`background`·`overflow: hidden` 사각 박스를 없앴습니다. `.scene` 이  `.screen` 패딩(34px)을 음수 마진으로 넘어 **화면 폭 100%**(390px 기기에서 정확히 390px)로 펼쳐지고, `.app` 의 팔각 클립과 `mask-image` 그라데이션(위 15%·아래 78%에서 사라짐, 좌우 17%)으로 가장자리가 종이에 스며듭니다.
 - **유료 결과 히어로**: 같운 `.scene` + `figcaption` 물상 캡션(`水 · 안개냥 · 비·이슬`)을 그림 아래 안개 위에 얹었습니다. 테두리·흰 판때기 없음.
 - **랜딩 히어로**: 같은 결로 14초 호흡(`catFloat`)만 더했습니다.
 
