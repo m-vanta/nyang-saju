@@ -1056,12 +1056,13 @@
       if (dw && dw.list.length) {
         var cur = dw.current;
         var next = dw.list.filter(function (d) { return d.age > (cur ? cur.age : 0); })[0];
-        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '이에요. ' + dw.startAge + '세에 ' + dw.list[0].ko + '로 열렸고, ';
+        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '이에요. 출생 후 ' + dw.startAgeLabel +
+          ' 되는 ' + dw.startDate + '부터 ' + dw.list[0].ko + '로 열렸고, ';
         if (cur) {
-          s2 += '지금은 <b>' + cur.ko + '</b> 구간(' + cur.age + '~' + (cur.age + 9) + '세)이에요.';
-          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '이에요.';
+          s2 += '지금은 <b>' + cur.ko + '</b> 구간(' + cur.age + '~' + (cur.age + 9) + '세 · ' + cur.from.replace(/\./g, '-') + '~' + cur.toInclusive + ')이에요.';
+          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '(' + next.from + ')이에요.';
         } else {
-          s2 += '아직 첫 대운 전이에요.';
+          s2 += '아직 첫 대운 전이에요. ' + dw.startDate + '까지는 주변의 기운이 대운을 대신해요.';
         }
         out.push('<p>' + s2 + '</p>');
       }
