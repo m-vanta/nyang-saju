@@ -27,7 +27,62 @@
 
 ---
 
-## 0. v2.3 구조 개선 (2026-11-25)
+## 0. v2.4 개선 (2026-11-25) — 판독을 사실로 · 물상 일러스트 · 비교 하네스
+
+### 0-A. `analysisData` — 판정을 만들지 않는 구조화 사실
+
+`src/domain/analysis.js` 가 명식에서 **사실만** 뽑습니다. 격국 확정·득령/득지/득세 합산·용신 판정은 넣지 않았습니다.
+
+- **득령·득지·득세는 각각 독립 판독**: 오행 생조(방향까지) · 왕상휴수사 · 12운성(표 기준 강집합) · 본기 십성. `supported` 같은 단일 boolean 으로 접는 필드는 린트가 거부합니다.
+- **통근**: 지지별 지장간을 重/輕 두 등급으로 나열(`rootGrade`). 長生祿旺=重, 그 밖=輕.
+- **격국**: 본기·투출·회국·祿/刃 후보를 **모두** 내고 `agreement(same|partial|differs|none)` 만 기록. `decided:false` 고정.
+- **합충**: 천간합·천간충·육합·육충·형·파·해·삼합/반합. 合化는 `transform.possible` 까지만, `decided:false`.
+- **earlyQiCandidates**: 月律分野 일수는 참고값(`use:'reference-only'`)이고 어떤 판정도 참조하지 않습니다(문헌이 부정).
+- **린트**: `NyangAnalysis.lint()` 가 `verdict|strength|score|total|grade|신강|신약|sum|avg|combined` 키와 earlyQi 참조를 잡습니다. `tests/run-regression.mjs` AN 항목이 12명식 전부에 대해 0건을 확인합니다.
+- **`FLAG.DOHWA` 이동**: `src/render/select.js` 가 합성하던 도화 판정을 `src/rules/findings.js` 로 옮겼습니다. 이제 렌더 층은 판정을 만들지 않습니다.
+- `worker/tools/sync-engine.mjs` 가 `analysis.js` 도 서버 사본으로 복사합니다(서버가 간지 8자로 같은 사실을 다시 계산할 수 있게).
+
+### 0-B. 비교 하네스 `tests/ai-compare/`
+
+규칙 기반 출력과 AI 종합 해석을 같은 모양(`ReadingDoc`)으로 맞춰 재는 오프라인 하네스입니다.
+
+```bash
+node tests/ai-compare/run.mjs --mode stub          # CI · 네트워크 없음
+node tests/ai-compare/run.mjs --mode score --in out/<runId>
+```
+
+- 픽스처 22개(원본 QA 12 · 경계 4 · 설계 상충 C1~C8), 엔진 2개(rule · ai) = 44건.
+- 지표 EA-1/EA-2(인용·근거율) · CA(상충 설명률) · CR(모순률) · HR(창작률) · TC(톤) · SF(안전) · 결정성.
+- 검증기 G1~G12 + **자기시험**: 일부러 어긋난 문서 3종(없는 판정·근거 없음·민감 단정)을 잡지 못하면 하네스가 실패합니다.
+- v2.4 실행 결과: rule EA 100/100 · CA 6/6 · CR 0% · HR 0% · SF 0 · judge 4.91 **PASS**, ai(stub) 100/100 · CA 6/6 · CR 0% · HR 0% · judge 4.88 **PASS**.
+- 실호출(`--mode live`)은 worker 경유 키가 필요하고, 결과는 `out/`(gitignore)에만 둡니다.
+
+### 0-C. 디자인 — 일러스트만 남기고 장식은 덜어냄
+
+- **일간 10종 물상 일러스트**: 甲 큰 나무 · 乙 꽃 · 丙 태양 · 丁 촛불 · 戊 큰 산 · 己 밭 · 庚 바위 · 辛 보석 · 壬 바다 · 癸 안개비. 동양화 × 콩눈 펜선 톤으로 4:5 일러스트(`public/scene-*`)와 얼굴 아바타(`public/face-*`, 1:1)를 만들었습니다.
+- **캐릭터 중심 히어로**: 무료·유료 결과 상단을 전면 일러스트로 바꿨고, 세로 '팔자' 패 같은 잡다한 장식은 뺐습니다.
+- **원형 아바타 인연 궤도**: 중심 노드와 친구 노드를 일간 얼굴 아바타(원형)로 그립니다. 관계 유형 색 점은 모서리에 작게 남겼고, 임의 점수는 여전히 화면에 없습니다(`친구 초대 · 준비 중` 유지).
+- **프리미엄 리포트**: `한 줄로 정리하면` 박스, `사주로 본 근거` 아이콘 카드 6개(일간·월령·계절 자리·12운성·통근·표면 최다), 세로 먹선을 옅은 **수묵 구분선**으로 바꾸고 근거 칩을 카드형으로 정리했습니다.
+- **공유 카드 9:16 / 1:1**: 일러스트 + 얼굴 메달 + 천기팩폭 띠 + 오행 띠로 재배치했습니다. 이름·생년월일·시간·성별은 카드에 넣지 않고, 정식 결제는 계속 OFF(`PAYMENTS = "off"`)입니다.
+
+### 0-D. 검증 (2026-11-25)
+
+| 검사 | 결과 |
+|---|---|
+| `node tests/run-regression.mjs` | **122/122** (AN 5항목 추가) |
+| `node tests/ai-compare/run.mjs --mode stub` | rule PASS · ai(stub) PASS · probe 3/3 |
+| `tools/check-engine.py` | 기준값 전부 일치 · 오행 % 100 |
+| `tools/check-type.py` | 12px 미만 0 · 본문 16px/1.7 · 한자만 명조 |
+| `tools/check-layout.py` | 360·390·430 최소 여백 22.3px · 겹침 0 |
+| `tools/check-orbit.py` · `check-funnel.py` · `check-v22.py` | 전부 통과 |
+| `worker` `node --test test/` | **29/29** |
+| 스크린샷 | `downloads/nyang-v24-*.png` (390·430, 결과·유료 리포트·궤도·공유 카드) |
+
+문서: `docs/myeongri-literature-verification.md` · `docs/orbit-finding-and-ai-hybrid-design.md`
+
+---
+
+## 0-2. v2.3 구조 개선 (2026-11-25)
 
 계산·판정·문장·렌더를 4층으로 나눴습니다. 화면 디자인과 팔자 고양이 10종, 브랜드 세계관은 그대로입니다.
 
