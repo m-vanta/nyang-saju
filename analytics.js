@@ -4,14 +4,15 @@
    무료 → 유료 퍼널에서 실제로 어디서 멈추는지 보려면 화면이 아니라 사건을 세야 한다.
    여기서 세는 여덟 개가 이 앱의 퍼널 전부다.
 
-     page_view         화면이 열렸다 (유입 경로 inviter · referrer 포함)
+     page_view         화면이 열렸다 (referrer·초대 코드 유입 여부만. 닉네임·생년월일 없음)
      input_start       생년월일 폼을 처음 건드렸다 (한 번만)
-     input_complete    생년월일·성별·관심운세를 다 채우고 폼을 냈다 (한 번만)
-     free_result_view  무료 천기(팔자 고양이)가 열렸다
+     input_complete    폼을 냈다 (관심운세만. 생년월일·성별·달력·시간 없음)
+     free_result_view  무료 천기가 열렸다 (관심운세·유입 여부만)
      result_share      무료 결과 카드를 저장/공유했다
      friend_invite     친구 초대 링크를 복사/공유했다
      pay_button_click  복채 1,900원 버튼을 눌렀다
-     payment_complete  결제(지금은 미리보기)가 끝나 유료 천기가 열렸다
+     preview_opened    미리보기 잠금을 열었다 (결제 아님)
+     payment_complete  정식 결제가 끝났다 (v2.3 미리보기 모드에서는 발행하지 않음)
 
    저장소는 브라우저 메모리 버퍼(+ localStorage 사본)뿐이다. 서버로 보내려면
    setEndpoint(url | fn) 로 훅을 걸고 flush() 하면 된다. GA4 는 자동으로 gtag 를 쓴다.
@@ -24,7 +25,7 @@
   var MAX = 400;
   var EVENTS = [
     'page_view', 'input_start', 'input_complete', 'free_result_view',
-    'result_share', 'friend_invite', 'pay_button_click', 'payment_complete'
+    'result_share', 'friend_invite', 'pay_button_click', 'preview_opened', 'payment_complete'
   ];
 
   var session = 's' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);

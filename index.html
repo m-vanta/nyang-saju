@@ -436,6 +436,15 @@
             </span>
           </div>
 
+          <div class="field" id="zi-field" hidden>
+            <span class="field__key">자시(23:00~00:59) 어느 쪽인가요</span>
+            <div class="seg seg--mini" data-group="ziSide" role="group" aria-label="자시 구분">
+              <button type="button" class="seg__btn is-on" data-value="early">자정 넘긴 00시대</button>
+              <button type="button" class="seg__btn" data-value="late">전날 밤 23시대</button>
+            </div>
+            <p class="line__note" id="zi-note">자시는 날짜 경계에 걸쳐 있어요. 실제 태어난 쪽을 골라 주세요.</p>
+          </div>
+
           <div class="field">
             <span class="field__key" id="status-label">오늘 물어볼 것</span>
             <div class="ticks" id="status-grid" role="group" aria-labelledby="status-label">
@@ -663,10 +672,10 @@
           </div>
 
           <div class="orbit__invite-row">
-            <button type="button" class="btn btn--line" id="btn-invite">친구 초대 링크 복사</button>
+            <button type="button" class="btn btn--line is-pending" id="btn-invite" aria-describedby="orbit-invite-hint">친구 초대 · 준비 중</button>
             <button type="button" class="btn btn--line" id="btn-invite-share" hidden>초대 링크 공유</button>
           </div>
-          <p class="orbit__hint" id="orbit-invite-hint">링크를 받은 친구가 자기 사주를 보면, 그 친구와의 궁합이 같이 나와요.</p>
+          <p class="orbit__hint" id="orbit-invite-hint">친구 초대 링크는 아직 준비 중이에요. 그동안은 친구 이름과 생년월일로 궤도에 직접 올려 보실 수 있어요.</p>
           <p class="orbit__lock" id="orbit-lock">궤도에 오른 사람마다의 상세 관계 해석은 복채 1,900원이에요.</p>
         </section>
 
@@ -806,16 +815,16 @@
         <div class="modal__grip" aria-hidden="true"></div>
         <div class="pay-head">
           <svg class="pay-head__plum" viewBox="0 0 64 64" aria-hidden="true"><use href="#plum-center" /></svg>
-          <p class="pay-head__badge" id="pay-badge">미리보기 결제</p>
+          <p class="pay-head__badge" id="pay-badge">미리보기 · 결제 없음</p>
           <h3 class="pay-head__title" id="pay-title">냥도사의 천기누설 한 장</h3>
-          <p class="pay-head__price">복채 <b>1,900원</b></p>
-          <p class="pay-head__line">무료로 받은 팔자 고양이에 다섯 가지를 더 얹어요. 누르면 바로 펼쳐져요.</p>
+          <p class="pay-head__price">복채 <b>1,900원</b> <span style="font-size:12px;color:var(--ink-3)">(정식 결제 준비 중)</span></p>
+          <p class="pay-head__line">지금은 미리보기예요. 결제 없이 다섯 가지를 펼쳐 볼 수 있어요. 정식 결제는 열려 있지 않아요.</p>
         </div>
 
         <p class="pay-label" id="pay-value-label">1,900원에 담기는 것</p>
         <ol class="pay-value" id="pay-value"></ol>
 
-        <p class="pay-label">결제수단</p>
+        <p class="pay-label">결제수단 <span style="font-size:12px;color:var(--ink-3)">(미리보기에서는 쓰지 않아요)</span></p>
         <div class="pay-methods" id="pay-methods">
           <button type="button" class="pay-method is-on" data-value="kakaopay">
             <span class="pay-method__mark" aria-hidden="true"></span>
@@ -831,10 +840,10 @@
           </button>
         </div>
 
-        <p class="pay-note" id="pay-note">지금은 미리보기 결제예요. 결제 없이 결과가 바로 열리고, 실제 카드값은 나가지 않아요.</p>
+        <p class="pay-note" id="pay-note">지금은 미리보기예요. 카드값이 나가지 않고, 결제 완료로 기록되지도 않아요.</p>
 
         <div class="pay-foot">
-          <button type="button" class="gold-btn gold-btn--full" id="btn-pay">미리보기로 천기 열기</button>
+          <button type="button" class="gold-btn gold-btn--full" id="btn-pay">미리보기 잠금 해제</button>
           <button type="button" class="link link--center" data-close-modal>나중에 볼게요</button>
         </div>
       </div>
@@ -857,9 +866,21 @@
   </div>
 </div>
 
+<!-- 서버(Cloudflare Worker)를 붙일 때: 아래 주석을 풀고 주소를 적습니다.
+     NYANG_API 는 결제·공유 코드 서버 주소, NYANG_INVITE_READY 는 친구 초대 열림 스위치입니다.
+<script>window.NYANG_API = 'https://nyang-saju.<account>.workers.dev'; window.NYANG_INVITE_READY = true;</script>
+-->
 <script src="vendor/manseryeok.js"></script>
-<script src="saju.js"></script>
+<script src="src/domain/tables.js"></script>
+<script src="src/domain/chart.js"></script>
+<script src="src/domain/period.js"></script>
+<script src="src/rules/findings.js"></script>
 <script src="copy.js"></script>
+<script src="src/content/paid-strings.js"></script>
+<script src="src/content/free.js"></script>
+<script src="src/content/paid.js"></script>
+<script src="src/render/select.js"></script>
+<script src="saju.js"></script>
 <script src="palja.js"></script>
 <script src="analytics.js"></script>
 <script src="app.js"></script>

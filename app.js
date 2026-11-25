@@ -10,7 +10,10 @@
 
   var S = window.NyangSaju;
   var C = window.NyangCopy;
+  var PC = window.NyangPaidCopy;
   var P = window.NyangPalja;
+  var R = window.NyangRender;
+  var PD = window.NyangPeriod;
   var AN = window.NyangAnalytics;
 
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
@@ -24,6 +27,9 @@
     reading: null,
     input: null,
     paid: false,
+    payment: { mode: 'preview', status: 'idle', orderId: null, token: null },
+    ziSide: 'early',
+    shareCode: null,
     canvasReady: false,
     shareReady: false,
     friends: [],
@@ -89,10 +95,14 @@
 
   function trackPageView() {
     var q = null;
-    try { q = new URLSearchParams(location.search); } catch (e) { q = null; }
+    var code = null;
+    try {
+      q = new URLSearchParams(location.search);
+      code = q.get('r');
+    } catch (e) { q = null; }
+    if (!code && /\/r\/[A-Z2-7]{6,}/.test(location.pathname)) code = 'path';
     AN.track('page_view', {
-      inviter: (q && q.get('inviter')) || null,
-      inviteLanded: !!state.invite,
+      inviteLanded: !!code || !!state.invite,
       referrer: document.referrer || null,
       paid: false
     });
@@ -274,6 +284,16 @@
       hourSel.appendChild(o);
     });
     hourSel.value = '6';
+    hourSel.addEventListener('change', syncZi);
+    syncZi();
+  }
+
+  // 자시를 고를 때만 '자정 전/후'를 묻는다 — 23:30 고정으로 뭉개지 않기 위해서
+  function syncZi() {
+    var field = $('#zi-field');
+    if (!field) return;
+    var isZi = $('#hour') && $('#hour').value === '0';
+    field.hidden = !isZi;
   }
 
   function bindSegments() {
@@ -287,6 +307,7 @@
         var val = btn.getAttribute('data-value');
         if (group === 'gender') state.gender = val;
         if (group === 'calendar') { state.calendar = val; syncDays(); }
+        if (group === 'ziSide') state.ziSide = val === 'late' ? 'late' : 'early';
       });
     });
   }
@@ -404,6 +425,14 @@
     t._timer = setTimeout(function () { t.classList.remove('is-on'); }, 2800);
   }
 
+  /* 친구 초대(공유 코드)는 Cloudflare Worker 의 /api/share 가 있어야 열린다.
+     Worker 를 배포하기 전에는 index.html 에서 window.NYANG_INVITE_READY 를
+     true 로 두지 않으므로 기본값은 '준비 중' 이다. 준비 중에는 링크를 만들려
+     시도하지 않고(개인정보 URL 폴백도 없다) 안내만 한다. */
+  function inviteReady() {
+    return window.NYANG_INVITE_READY === true;
+  }
+
   /* ------------------------------------------------------------------ */
   /* 3. 제출 → 무료 천기                                                */
   /* ------------------------------------------------------------------ */
@@ -416,7 +445,8 @@
       month: +$('#month').value,
       day: +$('#day').value,
       calendar: state.calendar,
-      isLeap: state.calendar === 'lunar' && $('#isLeap').checked && S.leapMonthOf(+$('#year').value) === +$('#month').value,
+      isLeap: state.calendar === 'lunar' && $('#isLeap').checked,
+      ziSide: state.ziSide,
       hourIdx: $('#hour').value === 'none' ? null : +$('#hour').value,
       focus: state.focus
     };
@@ -427,12 +457,13 @@
     err.hidden = true;
     var input = collect();
     var r;
+    var asOf = new Date();
     try {
-      r = buildReading(S.computePillars(input), input);
+      r = buildReading(S.computePillars(input), input, asOf);
     } catch (e) {
       if (window.console && console.error) console.error(e);
-      err.textContent = /음력/.test(e && e.message ? e.message : '')
-        ? '음력 날짜가 맞지 않아요. 생년월일을 다시 확인해 주세요.'
+      err.textContent = /음력|윤달/.test(e && e.message ? e.message : '')
+        ? (e.message || '음력 날짜가 맞지 않아요. 생년월일을 다시 확인해 주세요.')
         : C.ui.error;
       err.hidden = false;
       return;
@@ -440,32 +471,20 @@
     state.reading = r;
     state.input = input;
     state.paid = false;
+    state.payment = { mode: 'preview', status: 'idle', orderId: null, token: null };
     state.selectedFriend = null;
+    state.shareCode = null;
 
-    // 퍼널 3번: 생년월일·성별·관심운세를 다 채우고 폼을 낸 순간 한 번만
+    // 퍼널: 관심운세만 남긴다(생년월일·성별·달력·시간 여부는 보내지 않는다)
     if (!state.inputDone) {
       state.inputDone = true;
-      AN.track('input_complete', {
-        name: !!input.name,
-        gender: input.gender,
-        calendar: input.calendar,
-        hasTime: input.hourIdx != null,
-        focus: r.focusKey,
-        chars: r.chart.total
-      });
+      AN.track('input_complete', { focus: input.focus });
     }
 
     renderFree(r, input);
     show('screen-free');
 
-    AN.track('free_result_view', {
-      dayMaster: r.dayMaster.short,
-      dayMasterIdx: r.chart.dayMaster,
-      cat: r.palja.name,
-      chars: r.chart.total,
-      focus: r.focusKey,
-      inviteLanded: !!state.invite
-    });
+    AN.track('free_result_view', { focus: r.focusKey, inviteLanded: !!state.invite });
   }
 
   function birthLines(r, input) {
@@ -474,6 +493,10 @@
       : '양력 ' + input.year + '.' + pad(input.month) + '.' + pad(input.day);
     var h1 = r.chart.hour ? r.chart.hour.label : '시간 모름';
     var h2 = r.chart.hour ? r.chart.hour.range + ' · ' + r.focus.label : '시주 빼고 여섯 글자 · ' + r.focus.label;
+    if (input.calendar === 'lunar' && r.chart.input && r.chart.input.normalized) {
+      var sv = r.chart.input.normalized.solar;
+      cal += ' → 양력 ' + sv.y + '.' + pad(sv.m) + '.' + pad(sv.d);
+    }
     return [cal + ' · ' + h1, h2];
   }
 
@@ -490,19 +513,22 @@
   /* 3-1. 천기 조립 — 만세력 결과 + 팔자 고양이 + copy.js               */
   /* ------------------------------------------------------------------ */
 
-  function buildReading(chart, input) {
-    var m = C.MASTER[chart.dayMaster];
+  function buildReading(chart, input, asOf) {
+    var m = PC.MASTER[chart.dayMaster];
     var focusKey = C.FOCUS[input.focus] ? input.focus : 'love';
     var elemKo = STEM_ELEM[chart.dayMaster];
     var dmName = S.STEMS[chart.dayMaster] + elemKo;
     var dmHanja = S.STEMS_HANJA[chart.dayMaster] + S.ELEM_HANJA[elemKo];
     var name = (input.name || '').trim() || '손님';
-    var timing = S.loveTiming(chart, Date.now());
+    var period = PD.period(chart, asOf);
+    var timing = PD.loveTiming(chart, asOf);
 
     var r = {
       name: name,
       callName: name === '손님' ? '손님' : name + ' 님',
       chart: chart,
+      period: period,
+      asOf: period.asOf,
       master: m,
       focusKey: focusKey,
       focus: C.FOCUS[focusKey],
@@ -512,157 +538,60 @@
     };
 
     r.palja = P.build(chart, name);
-    r.palja.pct = chart.strongest.pct;
-    r.themes = themeSections(r);
-    r.patterns = buildPatterns(r);
+    r.palja.pct = chart.share[chart.tiedMax[0]];
+    r.themes = R.buildThemes(chart, period, name, focusKey);
+    r.patterns = R.buildPatterns(chart, period, name);
+    r.paidTraits = R.buildPaidTraits(chart, name);
+    r.flow = R.flowNarration(period, name);
+    r.deep = buildDeep(r);
     r.summary = buildSummary(r);
     return r;
   }
 
-  /* --- 유료 : 세 가지 운 (고른 운세부터) ----------------------------- */
-
-  function themeSections(r) {
-    var out = [];
-    var order;
-    if (r.focusKey === 'year') {
-      out.push({
-        key: 'year',
-        title: '올해 총운',
-        term: '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count +
-          '개(' + r.palja.pct + '%)',
-        basis: basisFor(r, 'year'),
-        body: fill(r.master.focus.year, r.name),
-        why: r.timingText || ''
-      });
-      order = ['love', 'money', 'work'];
-    } else {
-      order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
-      order.unshift(r.focusKey);
-    }
-    order.forEach(function (k) {
-      var T = C.THEME[k];
-      var body = fill(r.master.focus[k], r.name) + ' ' +
-        fillv(T.elem[r.palja.rel], r) + ' ' + fillv(T.god[r.palja.group], r);
-      out.push({
-        key: k,
-        title: T.label,
-        kicker: T.kicker,
-        term: r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' + r.chart.strongest.count + '개(' +
-          r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount,
-        basis: basisFor(r, k),
-        body: body
-      });
-    });
-    return out;
+  function basisText(basis) {
+    return Array.isArray(basis) ? basis.join(' · ') : (basis || '');
   }
 
-  /* --- 상세 해설의 명리 근거 한 줄 -----------------------------------
-     일간·일주·오행·십성·대운·올해 중 그 운에 실제로 쓰인 축만 골라 붙인다. */
-  function basisFor(r, key) {
+  /* --- 유료 : 팩폭 심층 · 성향 상세 · 곁에 둘 기운 --------------------- */
+  function buildDeep(r) {
+    var m = r.master;
+    var bp = C.ui.result.bonus.parts;
     var c = r.chart;
-    var day = c.pillars.day;
-    var dayLine = day ? '일주 ' + day.hanja : '';
-    var elem = r.palja.strongKo + ' ' + c.strongest.count + '개(' + c.strongest.pct + '%)';
-    var god = r.palja.topGod + ' ' + r.palja.godCount;
-    var flow = flowAxis(c);
-    var parts = ['일간 ' + r.dayMaster.short];
-    if (key === 'love') {
-      if (dayLine) parts.push(dayLine);
-      parts.push(elem);
-      parts.push(god);
-    } else if (key === 'money') {
-      parts.push(elem);
-      parts.push(god);
-      parts.push('대운 ' + flow.daeHanja);
-    } else if (key === 'work') {
-      if (dayLine) parts.push(dayLine);
-      parts.push(god);
-      parts.push('대운 ' + flow.daeHanja);
-    } else {
-      parts.push('대운 ' + flow.daeHanja);
-      parts.push('올해 ' + flow.yearHanja);
-    }
-    return parts.join(' · ');
-  }
-
-  /* --- 유료 : 반복되는 인생 패턴 3개 ---------------------------------
-     세 축을 겹치지 않게 나눈다.
-       ① 십성(제일 센 십성) — 사람 사이에서 내가 맡는 역할
-       ② 일주(日柱)와 지지 관계·도화 — 가까운 사이에서 생기는 어긋남
-       ③ 대운·올해 흐름 — 시기가 만드는 반복
-     ================================================================== */
-
-  // ② 일주 축: 도화 → 지지 충 → 일지의 기세(12운성) 순으로 하나를 고른다
-  function dayPillarAxis(chart) {
-    if (chart.dohwa) return 'dohwa';
-    var d = chart.pillars.day.branch;
-    var clash = ['year', 'month', 'hour'].some(function (k) {
-      var p = chart.pillars[k];
-      return p && ((p.branch - d) % 12 + 12) % 12 === 6;
-    });
-    if (clash) return 'chung';
-    var strong = ['장생', '관대', '건록', '제왕', '태', '양'].indexOf(chart.pillars.day.stage) >= 0;
-    return strong ? 'strong' : 'weak';
-  }
-
-  // ③ 대운·올해 축: 대운 지지가 일간 오행과 어떤 관계인지
-  function relToMe(chart, elem) {
-    var me = S.STEM_ELEM[chart.dayMaster];
-    if (!elem) return 'same';
-    if (me === elem) return 'same';
-    if (S.ELEM_MAKES[me] === elem) return 'makes';
-    if (S.ELEM_KILLS[me] === elem) return 'kills';
-    if (S.ELEM_KILLS[elem] === me) return 'killed';
-    if (S.ELEM_MAKES[elem] === me) return 'cycle';
-    return 'same';
-  }
-
-  function flowAxis(chart) {
-    var dw = chart.daewoon && chart.daewoon.current;
-    var yearNow = new Date().getFullYear();
-    var dy = yearNow - chart.solar.y;
-    var ys = (chart.pillars.year.stem + dy) % 10;
-    var yb = (chart.pillars.year.branch + dy) % 12;
-    var elem = dw ? S.BRANCH_ELEM[dw.branch] : S.BRANCH_ELEM[chart.pillars.year.branch];
-    return {
-      key: relToMe(chart, elem),
-      daeHanja: dw ? dw.hanja : '아직 대운 전',
-      daeKo: dw ? dw.ko : '대운 전',
-      yearHanja: S.STEMS_HANJA[ys] + S.BRANCHES_HANJA[yb],
-      yearKo: S.STEMS[ys] + S.BRANCHES[yb]
-    };
-  }
-
-  function buildPatterns(r) {
-    var out = [];
-    function add(pt, vars, basis) {
-      if (!pt) return;
-      var text = String(pt.text);
-      if (vars) {
-        Object.keys(vars).forEach(function (k) {
-          text = text.split('{' + k + '}').join(vars[k]);
-        });
+    var dw = r.period.daewoon;
+    var coreBasis = ['일간 ' + r.dayMaster.short, r.palja.strongText, r.palja.topGod + ' ' + r.palja.godCount];
+    var flowBasis = (dw ? ['대운 ' + dw.hanja, '천간 ' + dw.stemTen, '지지 ' + dw.branchTen] : ['대운 전'])
+      .concat(['올해 ' + r.period.seun.hanja]);
+    return [
+      {
+        bonus: C.ui.result.bonus.label1,
+        title: C.PAID.bombTitle,
+        basis: coreBasis.join(' · '),
+        parts: [
+          { label: bp.me, text: fill(m.selfSee, r.name) },
+          { label: bp.blind, text: fill(m.selfBlind, r.name) },
+          { label: bp.first, text: fill(m.firstMet, r.name) },
+          { label: bp.strength, text: fill(m.gift, r.name) }
+        ]
+      },
+      {
+        bonus: C.ui.result.bonus.label2,
+        title: C.PAID.traitTitle,
+        basis: coreBasis.join(' · '),
+        tags: r.palja.tags,
+        parts: r.paidTraits
+      },
+      {
+        bonus: C.ui.result.bonus.label3,
+        title: C.ui.result.bonus.title2,
+        basis: flowBasis.join(' · '),
+        parts: [
+          { label: bp.when, text: fill(m.love, r.name) },
+          { label: bp.keep, text: fill(m.keep, r.name) },
+          { label: bp.now, text: r.flow.text },
+          { label: bp.avoid, text: fill(m.avoidEnergy, r.name), warn: true }
+        ]
       }
-      out.push({ label: pt.label, text: fillv(text, r), cut: fillv(pt.cut, r), basis: basis || '' });
-    }
-
-    // ① 십성 — 사람 사이에서 반복되는 역할
-    add(C.PATTERN.god[r.palja.group], null, '십성 · ' + r.palja.topGod + ' ' + r.palja.godCount);
-
-    // ② 일주·지지·도화 — 가까운 사이의 결
-    var axis = dayPillarAxis(r.chart);
-    var axisKo = { dohwa: '도화', chung: '지지 충', strong: '일지 기세 강', weak: '일지 기세 약' }[axis];
-    add(C.PATTERN.pillar[axis], null,
-      '일주 · ' + r.chart.pillars.day.hanja + (axisKo ? ' · ' + axisKo : ''));
-
-    // ③ 대운·올해 — 시기가 만드는 반복
-    var flow = flowAxis(r.chart);
-    add(C.PATTERN.flow[flow.key], {
-      daeHanja: flow.daeHanja, daeKo: flow.daeKo,
-      yearHanja: flow.yearHanja, yearKo: flow.yearKo
-    }, '대운 · ' + flow.daeHanja + ' · 올해 ' + flow.yearHanja);
-
-    return out.slice(0, 3);
+    ];
   }
 
   /* --- 무료 : 연애·재물·직업운 미리보기 (1~2줄) ---------------------- */
@@ -670,7 +599,7 @@
   function previewItems(r) {
     var order = ['love', 'money', 'work'].filter(function (k) { return k !== r.focusKey; });
     var items = order.map(function (k) {
-      var T = C.THEME[k];
+      var T = PC.THEME[k];
       var base = firstSent(fill(r.master.focus[k], r.name), 1);
       var tail = firstSent(fillv(T.elem[r.palja.rel], r), 1);
       return { key: k, label: T.label, text: clip(base + ' ' + tail, 96) };
@@ -753,7 +682,7 @@
     $('#free-bomb').textContent = tidy(p.bomb);
 
     // 대표 성향 3
-    $('#traits-sub').textContent = C.FREE.traitsSub;
+    $('#traits-sub').textContent = subChars(C.FREE.traitsSub, r.chart);
     $('#traits-list').innerHTML = p.traits.map(function (t) {
       return '<li class="trait"><span class="trait__no">' + t.no + '</span>' +
         '<span class="trait__label">' + esc(t.label) + '</span>' +
@@ -782,14 +711,18 @@
     }).join('');
 
     // 1,900원으로 열리는 다섯 가지
-    $('#value-sub').textContent = C.FREE.valueSub;
+    $('#value-sub').textContent = subChars(C.FREE.valueSub, r.chart);
+    renderValueList(r.chart);
     $('#value-focus').textContent = valueFocusLine();
     $('#value-note').textContent = C.FREE.valueNote;
 
     // 무료 결과 카드
     $('#share-sub').textContent = C.FREE.shareSub;
-    $('#share-invite-label').textContent = C.FREE.shareInvite;
-    $('#share-invite-hint').textContent = fill(C.FREE.shareInviteHint);
+    var readyShare = inviteReady();
+    $('#share-invite-label').textContent = readyShare ? C.FREE.shareInvite : C.FREE.shareInvitePending;
+    $('#share-invite-hint').textContent = readyShare ? fill(C.FREE.shareInviteHint) : C.FREE.shareInviteHintPending;
+    $('#share-invite').disabled = !readyShare;
+    $('#share-invite').closest('.share__opt').classList.toggle('is-pending', !readyShare);
     $('#btn-share-save').textContent = C.FREE.shareSave;
     $('#btn-share-share').textContent = C.FREE.shareShare;
     $('#btn-share-share').hidden = !canShareFiles();
@@ -808,9 +741,14 @@
     $('#orbit-sub').textContent = C.FREE.orbitSub;
     $('#orbit-type-kicker').textContent = C.FREE.orbitTypeKicker;
     $('#orbit-lock').textContent = C.FREE.orbitLock;
-    $('#orbit-invite-hint').textContent = fill(C.orbit.inviteHint);
-    $('#btn-invite').textContent = C.orbit.inviteBtn;
-    $('#btn-invite-share').hidden = !canShareFiles();
+    var inviteOn = inviteReady();
+    $('#orbit-invite-hint').textContent = inviteOn ? fill(C.orbit.inviteHint) : C.orbit.invitePendingHint;
+    $('#btn-invite').textContent = inviteOn ? C.orbit.inviteBtn : C.orbit.invitePendingBtn;
+    $('#btn-invite').classList.toggle('is-pending', !inviteOn);
+    // aria-disabled 는 누름 자체를 막아 안내가 안 나가므로 쓰지 않는다. 이름과 안내 문구로 상태를 알린다.
+    if (inviteOn) $('#btn-invite').removeAttribute('aria-describedby');
+    else $('#btn-invite').setAttribute('aria-describedby', 'orbit-invite-hint');
+    $('#btn-invite-share').hidden = !inviteOn || !canShareFiles();
     renderOrbit();
   }
 
@@ -820,14 +758,22 @@
   }
 
   // 1,900원으로 열리는 다섯 가지 — 무료 화면 목록·결제 시트·유료 체크리스트
-  function renderValueList() {
+  function renderValueList(chart) {
     var rows = C.VALUE.map(function (v) {
       return '<li class="value__item"><span class="value__no">' + v.no + '</span>' +
         '<span class="value__title">' + esc(v.title) + '</span>' +
-        '<p class="value__desc">' + esc(v.desc) + '</p></li>';
+        '<p class="value__desc">' + esc(subChars(v.desc, chart)) + '</p></li>';
     }).join('');
     var box = $('#value-list');
     if (box) box.innerHTML = rows;
+    var pay = $('#pay-value');
+    if (pay) {
+      pay.innerHTML = C.VALUE.map(function (v) {
+        return '<li><span class="pay-value__no">' + v.no + '</span>' +
+          '<span class="pay-value__title">' + esc(v.title) + '</span>' +
+          '<p class="pay-value__desc">' + esc(subChars(v.desc, chart)) + '</p></li>';
+      }).join('');
+    }
   }
 
   function foldLine(chart) {
@@ -914,10 +860,11 @@
     var label = '오행 분포 ' + chart.dist.map(function (d) {
       return d.elem + ' ' + d.count + '개 ' + d.pct + '%';
     }).join(', ');
+    var sum = Math.round(chart.dist.reduce(function (a, d) { return a + d.pct; }, 0) * 10) / 10;
     target.innerHTML =
       '<div class="oheng__bar" role="img" aria-label="' + label + '">' + bar + '</div>' +
       '<ul class="oheng__legend">' + legend + '</ul>' +
-      '<p class="oheng__note">' + charWord(chart) + ' 균등 가중 · ' + elemCountsLine(chart) + ' · 합 100%</p>';
+      '<p class="oheng__note">' + charWord(chart) + ' 균등 가중 · ' + elemCountsLine(chart) + ' · 합 ' + sum + '%</p>';
   }
 
   /* --- 오행도: 바깥 원 상생 화살표 + 안쪽 오각별 상극 화살표 --------- */
@@ -1064,6 +1011,13 @@
     return chart.total === 6 ? '여섯 글자' : '여덟 글자';
   }
 
+  function subChars(text, chart) {
+    if (!chart) return String(text == null ? '' : text);
+    return String(text == null ? '' : text)
+      .replace(/여덟 글자/g, charWord(chart))
+      .replace(/여덟/g, chart.total === 6 ? '여섯' : '여덟');
+  }
+
   function metaLine(chart) {
     return '일간 ' + chart.dayMasterName + ' · ' + S.ELEM_KO[chart.strongest.elem] + ' ' +
       chart.strongest.count + '개(' + chart.strongest.pct + '%)';
@@ -1084,7 +1038,9 @@
     var tops = chart.dominant;
     var topTxt = tops.map(function (e) { return S.ELEM_KO[e]; }).join('·');
     var line1 = who + '의 중심은 ' + han(chart.dayMasterHanja) + '(' + chart.dayMasterName + ')이에요. ' +
-      charWord(chart) + ' 중 ' + josa(topTxt, '이가') + ' <b>' + t.count + '개(' + t.pct + '%)</b>로 제일 세고';
+      charWord(chart) + ' 중 ' + (tops.length > 1
+        ? topTxt + '이 각각 <b>' + t.count + '개(' + t.pct + '%)</b>로 가장 많고'
+        : josa(topTxt, '이가') + ' <b>' + t.count + '개(' + t.pct + '%)</b>로 제일 많고');
     if (chart.lacking.length) {
       var lackKo1 = S.ELEM_KO[chart.lacking[chart.lacking.length - 1]];
       line1 += ', ' + chart.lacking.map(function (e) { return S.ELEM_KO[e]; }).join('·') + josaOf(lackKo1, '은는') + ' 하나도 없어요.';
@@ -1116,18 +1072,23 @@
       if (dw && dw.list.length) {
         var cur = dw.current;
         var next = dw.list.filter(function (d) { return d.age > (cur ? cur.age : 0); })[0];
-        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '이에요. ' + dw.startAge + '세에 ' + dw.list[0].ko + '로 열렸고, ';
+        var s2 = '대운은 ' + (dw.forward ? '순행' : '역행') + '이에요. 출생 후 ' + dw.startAgeLabel +
+          ' 되는 ' + dw.startDate + '부터 ' + dw.list[0].ko + '로 열렸고, ';
         if (cur) {
-          s2 += '지금은 <b>' + cur.ko + '</b> 구간(' + cur.age + '~' + (cur.age + 9) + '세)이에요.';
-          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '이에요.';
+          s2 += '지금은 <b>' + cur.ko + '</b> 구간(' + cur.age + '~' + (cur.age + 9) + '세 · ' + cur.from.replace(/\./g, '-') + '~' + cur.toInclusive + ')이에요.';
+          if (next) s2 += ' 다음은 ' + next.age + '세 ' + next.ko + '(' + next.from + ')이에요.';
         } else {
-          s2 += '아직 첫 대운 전이에요.';
+          s2 += '아직 첫 대운 전이에요. ' + dw.startDate + '까지는 주변의 기운이 대운을 대신해요.';
         }
         out.push('<p>' + s2 + '</p>');
       }
 
       if (chart.hourEdge) out.push('<p>' + C.ui.chart.edgeHour + '</p>');
-      if (chart.termEdge) out.push('<p>' + C.ui.chart.edgeTerm + '</p>');
+      if (chart.termEdge) out.push('<p>' + (chart.flags.termEdgeTerm ? chart.flags.termEdgeTerm + ' ' : '') + C.ui.chart.edgeTerm + '</p>');
+      (chart.flags.assumptions || []).forEach(function (a) {
+        if (a.key === 'ziSide') out.push('<p>' + a.text + '</p>');
+        if (a.key === 'dst') out.push('<p>' + a.text + '</p>');
+      });
     }
     return out.join('');
   }
@@ -1174,63 +1135,21 @@
         basis: t.basis,
         body: t.body,
         why: t.why || ''
-      });
+      }, r.palja.chars + ' 근거');
     });
     $('#result-sections').innerHTML = html;
 
-    // 팩폭 심층 · 성향 상세
-    var m = r.master;
-    var bp = C.ui.result.bonus.parts;
-    var godBasis = '일간 ' + r.dayMaster.short + ' · ' + r.palja.topGod + ' ' + r.palja.godCount +
-      (r.chart.dohwa ? ' · 도화' : '');
-    var elemBasis = '일간 ' + r.dayMaster.short + ' · ' + r.palja.strongKo + ' ' +
-      r.chart.strongest.count + '개(' + r.palja.pct + '%) · ' + r.palja.topGod + ' ' + r.palja.godCount;
-    var flowBasis = '일간 ' + r.dayMaster.short + ' · 일주 ' + r.chart.pillars.day.hanja +
-      ' · 대운 ' + flowAxis(r.chart).daeHanja;
-    var deep = [
-      {
-        bonus: C.ui.result.bonus.label1,
-        title: C.PAID.bombTitle,
-        basis: godBasis,
-        parts: [
-          { label: bp.me, text: fill(m.selfSee, r.name) },
-          { label: bp.blind, text: fill(m.selfBlind, r.name) },
-          { label: bp.first, text: fill(m.firstMet, r.name) },
-          { label: bp.strength, text: fill(m.gift, r.name) }
-        ]
-      },
-      {
-        bonus: C.ui.result.bonus.label2,
-        title: C.PAID.traitTitle,
-        basis: elemBasis,
-        tags: p.tags,
-        parts: p.traits.map(function (tr) {
-          return { label: tr.label, text: tr.text };
-        }).concat([
-          { label: bp.closer, text: fill(m.closer, r.name) }
-        ])
-      },
-      {
-        bonus: C.ui.result.bonus.label3,
-        title: C.ui.result.bonus.title2,
-        basis: flowBasis,
-        parts: [
-          { label: bp.when, text: fill(m.love, r.name) },
-          { label: bp.keep, text: fill(m.keep, r.name) },
-          { label: bp.now, text: fill(m.timing, r.name) },
-          { label: bp.avoid, text: fill(m.avoidEnergy, r.name), warn: true }
-        ]
-      }
-    ];
+    // 팩폭 심층 · 성향 상세 · 곁에 둘 기운 (r.deep — Finding 기반)
+    var deep = r.deep;
     html = '';
-    deep.forEach(function (s) { html += entryHtml('', s); });
+    deep.forEach(function (s) { html += entryHtml('', s, r.palja.chars + ' 근거'); });
     $('#result-sections-bonus').innerHTML = html;
     $('#bonus-kicker').textContent = C.ui.result.bonus.kicker;
     $('#bonus-title').textContent = C.PAID.bombTitle + ' · ' + C.PAID.traitTitle;
-    $('#bonus-sub').textContent = C.ui.result.bonus.sub;
+    $('#bonus-sub').textContent = subChars(C.ui.result.bonus.sub, r.chart);
 
     // 반복되는 인생 패턴
-    $('#pattern-sub').textContent = C.PAID.patternSub;
+    $('#pattern-sub').textContent = subChars(C.PAID.patternSub, r.chart);
     $('#pattern-list').innerHTML = r.patterns.map(function (pt, i) {
       return '<li class="pattern"><span class="pattern__no">' + pad(i + 1) + '</span>' +
         '<span class="pattern__label">' + esc(pt.label) + '</span>' +
@@ -1245,6 +1164,7 @@
     renderOrbit();
 
     // 오늘의 천기 부적
+    var m = r.master;
     $('#result-sections-talis').innerHTML =
       '<div class="entry entry--talis">' +
         '<p class="entry__text">' + tidy(fill(m.talisman, r.name)) +
@@ -1257,7 +1177,7 @@
   }
 
   // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 '한 겹 더' 배지
-  function entryHtml(no, s) {
+  function entryHtml(no, s, basisLabel) {
     var head = s.bonus
       ? '<div class="entry__badge">' + s.bonus + '</div>' +
         '<h3 class="entry__title">' + s.title + '</h3>'
@@ -1270,10 +1190,10 @@
     if (s.term) html += '<span class="entry__term">' + esc(s.term) + '</span>';
 
     if (s.basis) {
-      var bits = String(s.basis).split(' · ').map(function (x) {
+      var bits = basisText(s.basis).split(' · ').map(function (x) {
         return '<span>' + hanjaize(x) + '</span>';
       }).join('<i>·</i>');
-      html += '<p class="entry__basis"><b>여덟 글자 근거</b><span class="entry__basis-list">' + bits + '</span></p>';
+      html += '<p class="entry__basis"><b>' + (basisLabel || '명식 근거') + '</b><span class="entry__basis-list">' + bits + '</span></p>';
     }
 
     if (s.body) {
@@ -1331,6 +1251,9 @@
   }
 
   function friendChart(f) {
+    if (f && f.ds != null && f.db != null) {
+      return { dayMaster: f.ds, pillars: { day: { branch: f.db } }, codeOnly: true };
+    }
     return S.computePillars({
       year: f.year, month: f.month, day: f.day,
       calendar: 'solar', hourIdx: f.hourIdx, gender: f.gender || '여성'
@@ -1371,6 +1294,7 @@
   }
 
   // 유료: 상세 해석 + 이렇게
+  // 점수(내부 궤도 배치용)는 넘기지 않는다 — 화면에는 유형과 명리 근거만.
   function orbitDetailParts(item) {
     var T = typeOf(item.compat);
     var detail = typeFill(T.detail, item);
@@ -1380,11 +1304,20 @@
     return {
       name: item.f.name,
       type: T.name,
-      score: item.compat.score,
       detail: detail,
       advice: typeFill(T.advice, item),
-      tags: item.compat.tags
+      tags: item.compat.tags,
+      evidence: item.compat.evidence
     };
+  }
+
+  // 일주 한 기둥 대 한 기둥이라는 것을 그대로 보여 주는 근거 칩
+  function orbitEvidenceHtml(item) {
+    var ev = (item.compat && item.compat.evidence) || [];
+    if (!ev.length) return '';
+    return '<p class="orbit__detail-basis"><b>일주 근거</b><span class="orbit__detail-basis-list">' +
+      ev.map(function (e) { return '<span>' + hanjaize(esc(e.text)) + '</span>'; }).join('<i>·</i>') +
+      '</span></p>';
   }
 
   function renderOrbit() {
@@ -1501,6 +1434,7 @@
       return '<li><div class="orbit__detail-top">' +
         '<span class="orbit__detail-name">' + esc(it.name) + (d.f.sample ? ' <i class="orbit__item-name"><i>예시</i></i>' : '') + '</span>' +
         '<span class="orbit__detail-type">' + esc(it.type) + '</span></div>' +
+        orbitEvidenceHtml(d) +
         '<p class="orbit__detail-text">' + hanjaize(it.detail) + '</p>' +
         '<p class="orbit__detail-advice">' + hanjaize(it.advice) + '</p></li>';
     }).join('');
@@ -1518,14 +1452,17 @@
     var item = inviteItem();
     if (!item) { box.hidden = true; box.innerHTML = ''; return; }
     var name = state.invite.name;
-    var already = state.friends.some(function (f) {
+    var already = !state.invite.code && state.friends.some(function (f) {
       return f.name === name && f.year === state.invite.year && f.month === state.invite.month && f.day === state.invite.day;
     });
     box.innerHTML = '<p class="invite__kicker">초대 링크로 오셨네요</p>' +
       '<h4 class="invite__title">' + esc(C.orbit.inviteLanded.replace(/\{name\}/g, name)) + '</h4>' +
       '<p class="invite__meta">내 궤도에서 ' + esc(name) + ' 님은 <b>' + typeOf(item.compat).name + ' · ' + orbitName(item.compat.orbit) + '</b></p>' +
       '<p class="invite__text">' + hanjaize(state.paid ? orbitDetailParts(item).detail : orbitLine(item)) + '</p>' +
-      (already ? '' : '<button type="button" class="btn btn--line" data-invite-add>' + C.orbit.inviteAdd + '</button>');
+      '<p class="invite__basis"><b>일주 근거</b><span>' + item.compat.evidence.map(function (e) {
+        return hanjaize(esc(e.text));
+      }).join('<i>·</i>') + '</span></p>' +
+      (already || state.invite.code ? '' : '<button type="button" class="btn btn--line" data-invite-add>' + C.orbit.inviteAdd + '</button>');
     box.hidden = false;
   }
 
@@ -1537,35 +1474,80 @@
     box.hidden = false;
   }
 
-  function parseInvite() {
-    var q, name;
-    try { q = new URLSearchParams(location.search); } catch (e) { return; }
-    name = (q.get('inviter') || '').trim().slice(0, 12);
-    if (!name) return;
-    var y = +q.get('iy'), m = +q.get('im'), d = +q.get('id');
-    if (!(y >= 1930 && y <= 2050 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return;
-    var ih = q.get('ih');
-    var inp = {
-      name: name,
-      gender: q.get('ig') === 'm' ? '남성' : '여성',
-      year: y, month: m, day: d,
-      calendar: q.get('ic') === 'lunar' ? 'lunar' : 'solar',
-      isLeap: q.get('il') === '1',
-      hourIdx: (ih == null || ih === 'none') ? null : +ih
-    };
-    try { S.computePillars(inp); } catch (e) { return; }
-    state.invite = inp;
-    renderInviteBanner();
+  /* --- 공유 코드 (/r/{code}) -----------------------------------------
+     서버에는 궁합에 필요한 최소값(일간·일지 인덱스)만 저장한다. 생년월일·시각·
+     이름·성별·달력은 저장하지도, URL에 넣지도 않는다. 서버가 없으면 링크를
+     만들지 않고 안내한다 — 개인정보를 URL에 넣는 폴백은 없다. */
+
+  function apiBase() {
+    return window.NYANG_API || location.origin;
+  }
+  function codeUrl(code) {
+    return pageBase().replace(/\/$/, '') + '/r/' + encodeURIComponent(code);
+  }
+
+  function ensureShareCode() {
+    if (state.shareCode) return Promise.resolve(state.shareCode);
+    if (!state.reading) return Promise.reject(new Error('no-reading'));
+    var c = state.reading.chart;
+    return fetch(apiBase().replace(/\/$/, '') + '/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ v: 1, ds: c.dayMaster, db: c.pillars.day.branch })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('share-http-' + res.status);
+      return res.json();
+    }).then(function (data) {
+      if (!data || !data.code) throw new Error('share-empty');
+      state.shareCode = data.code;
+      return data.code;
+    });
   }
 
   function inviteUrl() {
-    var i = state.input || {};
-    var base = pageBase();
-    return base + '?inviter=' + encodeURIComponent(state.reading.name) +
-      '&iy=' + i.year + '&im=' + i.month + '&id=' + i.day +
-      '&ih=' + (i.hourIdx == null ? 'none' : i.hourIdx) +
-      '&ic=' + (i.calendar || 'solar') + (i.isLeap ? '&il=1' : '') +
-      '&ig=' + (i.gender === '남성' ? 'm' : 'f');
+    return state.shareCode ? codeUrl(state.shareCode) : null;
+  }
+
+  /* /r/{code} 또는 ?r={code} 로 들어온 경우 — 이름·생년월일 없이 일간·일지만 받는다 */
+  function parseInvite() {
+    // Worker 가 배포되기 전에는 코드 조회를 시도하지 않는다(서버 없음이 콘솔 오류로 남지 않게)
+    if (!inviteReady()) return;
+    var code = null;
+    var m = location.pathname.match(/\/r\/([A-Za-z0-9_-]{6,})/);
+    if (m) code = m[1];
+    if (!code) {
+      try { code = new URLSearchParams(location.search).get('r'); } catch (e) { code = null; }
+    }
+    if (code) {
+      fetch(apiBase().replace(/\/$/, '') + '/r/' + encodeURIComponent(code)).then(function (res) {
+        if (!res.ok) throw new Error('gone');
+        return res.json();
+      }).then(function (d) {
+        if (!d || !Number.isInteger(d.ds) || !Number.isInteger(d.db)) return;
+        state.invite = { name: '초대 손님', ds: d.ds, db: d.db, code: code, expiresAt: d.expiresAt || null };
+        renderInviteBanner();
+        if (state.reading) renderOrbit();
+      }).catch(function () {
+        state.invite = null;
+        var box = $('#invite-banner');
+        if (box) {
+          $('#invite-banner-kicker').textContent = '초대 링크';
+          $('#invite-banner-text').textContent = '이 링크는 만료됐거나 내려졌어요. 새 링크를 받아 주세요.';
+          box.hidden = false;
+        }
+      });
+    }
+    // 예전 ?inviter= 링크 — 개인정보가 담겨 있어 읽지 않는다.
+    try {
+      if (new URLSearchParams(location.search).get('inviter')) {
+        var banner = $('#invite-banner');
+        if (banner) {
+          $('#invite-banner-kicker').textContent = '예전 링크';
+          $('#invite-banner-text').textContent = '예전 초대 링크에는 개인정보가 담겨 있어 더 이상 쓰지 않아요. 친구에게 새 초대 코드를 받아 주세요.';
+          banner.hidden = false;
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /* --- 친구 추가 폼 -------------------------------------------------- */
@@ -1700,7 +1682,7 @@
 
   function addInviteFriend() {
     var inv = state.invite;
-    if (!inv || !state.reading) return;
+    if (!inv || !state.reading || inv.code) return;
     if (state.friends.length >= MAX_FRIENDS) { toast(C.orbit.addMax); return; }
     var rec = {
       id: 'f' + Date.now().toString(36),
@@ -1725,30 +1707,36 @@
 
   function copyInvite(method) {
     if (!state.reading || !state.input) return;
-    copyText(inviteUrl()).then(function () {
+    if (!inviteReady()) { toast(C.orbit.invitePendingToast); return; }
+    ensureShareCode().then(function () {
+      return copyText(inviteUrl());
+    }).then(function () {
       toast(C.orbit.copied);
       trackInvite(method || 'copy');
     }).catch(function () {
-      toast(C.orbit.copyFail);
+      toast(C.orbit.inviteFailToast);
     });
   }
 
   function shareInvite() {
     if (!state.reading || !state.input) return;
-    var url = inviteUrl();
-    var payload = { title: C.brand.name, text: C.orbit.inviteBody.replace(/\{name\}/g, state.reading.name), url: url };
-    if (navigator.share) {
-      navigator.share(payload).then(function () { trackInvite('share'); }).catch(function () { });
-    } else {
-      copyText(url).then(function () { toast(C.orbit.copied); trackInvite('share'); }).catch(function () { });
-    }
+    if (!inviteReady()) { toast(C.orbit.invitePendingToast); return; }
+    ensureShareCode().then(function () {
+      var url = inviteUrl();
+      var payload = { title: C.brand.name, text: C.orbit.inviteBody.replace(/\{name\}/g, '친구'), url: url };
+      if (navigator.share) {
+        return navigator.share(payload).then(function () { trackInvite('share'); });
+      }
+      return copyText(url).then(function () { toast(C.orbit.copied); trackInvite('share'); });
+    }).catch(function () {
+      toast(C.orbit.inviteFailToast);
+    });
   }
 
   function trackInvite(method) {
     AN.track('friend_invite', {
       method: method,
-      friends: state.friends.length,
-      cat: state.reading ? state.reading.palja.name : null
+      friends: state.friends.length
     });
   }
 
@@ -1769,7 +1757,7 @@
     $$('[data-close-modal]').forEach(function (el) {
       el.addEventListener('click', closePay);
     });
-    $('#btn-pay').addEventListener('click', doDemoPay);
+    $('#btn-pay').addEventListener('click', doPreviewUnlock);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') closePay();
     });
@@ -1780,9 +1768,9 @@
         '<span class="pay-value__title">' + esc(v.title) + '</span>' +
         '<p class="pay-value__desc">' + esc(v.desc) + '</p></li>';
     }).join('');
-    $('#pay-badge').textContent = C.PAID.demoBadge;
-    $('#pay-note').textContent = C.PAID.demoNote;
-    $('#btn-pay').textContent = C.PAID.demoSubmit;
+    $('#pay-badge').textContent = '미리보기 · 결제 없음';
+    $('#pay-note').textContent = '지금은 미리보기예요. 카드값이 나가지 않고, 결제 완료로 기록되지도 않아요.';
+    $('#btn-pay').textContent = '미리보기 잠금 해제';
   }
 
   function openPay(source) {
@@ -1792,8 +1780,8 @@
     AN.track('pay_button_click', {
       source: source || 'value',
       price: 1900,
-      focus: state.focus,
-      cat: state.reading ? state.reading.palja.name : null
+      mode: 'preview',
+      focus: state.focus
     });
   }
 
@@ -1805,11 +1793,11 @@
 
   var PAY_LOADING = C.ui.loading.msgs;
 
-  function doDemoPay() {
+  function doPreviewUnlock() {
     var btn = $('#btn-pay');
     if (btn.disabled) return;
     btn.disabled = true;
-    btn.textContent = PAY_LABEL[state.payMethod] + ' 연결 중이에요';
+    btn.textContent = '미리보기를 여는 중이에요';
 
     closePay();
 
@@ -1826,27 +1814,22 @@
       textEl.textContent = PAY_LOADING[i];
     }, 700);
 
-    var orderId = 'NYANG_DEMO_' + Date.now().toString(36).toUpperCase();
-
     setTimeout(function () {
       clearInterval(timer);
       loading.classList.remove('is-on');
       loading.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('is-loading');
       btn.disabled = false;
-      btn.textContent = C.PAID.demoSubmit;
+      btn.textContent = '미리보기 잠금 해제';
       state.paid = true;
+      state.payment = { mode: 'preview', status: 'opened', orderId: null, token: null };
       renderPaid(state.reading, state.input);
       show('screen-result');
-      toast(C.ui.toast.paid + PAY_LABEL[state.payMethod] + ' 1,900원');
-      AN.track('payment_complete', {
-        method: PAY_LABEL[state.payMethod],
-        methodKey: state.payMethod,
-        amount: 1900,
-        orderId: orderId,
-        demo: true,
-        cat: state.reading.palja.name,
-        friends: state.friends.length
+      // 미리보기다. 결제수단 이름·금액을 '결제 완료'처럼 말하지 않는다.
+      toast('미리보기 잠금을 열었어요. 결제는 되지 않았어요.');
+      AN.track('preview_opened', {
+        mode: 'preview',
+        focus: state.reading.focusKey
       });
     }, 2400);
   }
@@ -2389,7 +2372,7 @@
   var SHARE_SIZE = { story: { w: 1080, h: 1920 }, square: { w: 1080, h: 1080 } };
 
   function shareLink() {
-    if (state.shareInvite && state.reading && state.input) return inviteUrl();
+    if (state.shareInvite && inviteUrl()) return inviteUrl();
     return pageBase();
   }
 
@@ -2469,7 +2452,7 @@
       var bandTop = y + (sq ? 16 : 28);
       var bombSize = sq ? 27 : 32, bombLh = sq ? 34 : 48, bombLines;
       ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
-      bombLines = wrapChars(ctx, tidy(p.bomb), sq ? 820 : 820, sq ? 2 : 4);
+      bombLines = wrapChars(ctx, tidy(p.bombPublic || p.bomb), sq ? 820 : 820, sq ? 2 : 4);
       var bandH = bandPad + (sq ? 22 : 34) + (sq ? 8 : 16) + bombLines.length * bombLh + bandPad;
 
       ctx.save();
@@ -2592,7 +2575,7 @@
         a.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
         toast(C.ui.toast.saved);
-        AN.track('result_share', { method: 'save', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+        AN.track('result_share', { method: 'save', ratio: state.shareRatio, inviteIncluded: state.shareInvite });
       }, 'image/png');
     });
 
@@ -2608,12 +2591,12 @@
         };
         if (navigator.canShare(payload)) {
           navigator.share(payload).then(function () {
-            AN.track('result_share', { method: 'share', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+            AN.track('result_share', { method: 'share', ratio: state.shareRatio, inviteIncluded: state.shareInvite });
           }).catch(function () { });
         } else {
           copyText(state.reading.palja.name + ' · ' + tidy(state.reading.palja.bomb)).then(function () {
             toast(C.ui.toast.shared);
-            AN.track('result_share', { method: 'copy', ratio: state.shareRatio, cat: state.reading.palja.name, inviteIncluded: state.shareInvite });
+            AN.track('result_share', { method: 'copy', ratio: state.shareRatio, inviteIncluded: state.shareInvite });
           });
         }
       }, 'image/png');
