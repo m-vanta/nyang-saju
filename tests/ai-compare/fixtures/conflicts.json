@@ -1,0 +1,61 @@
+{
+  "note": "상충 픽스처 설계표. requiredRefs 는 런타임에 findings 에서 확인해 붙인다(lib/metrics.mjs conflictRequirement). 여기서는 '무엇을 확인하는가'만 고정한다.",
+  "conflicts": {
+    "C1": {
+      "chartId": "C1",
+      "design": "월지 표 판독(왕·상)은 돕는데 통근이 0개",
+      "check": "한쪽만 말하고 단정하지 않는지",
+      "required": ["득령 계절/오행 판독", "통근 0개"],
+      "allowIf": "두 판독을 다른 축으로 병기"
+    },
+    "C2": {
+      "chartId": "QA04",
+      "design": "잡기월 — 본기(식신)와 투출(편관)이 다른 격을 가리킴",
+      "check": "불일치를 설명하는지",
+      "required": ["GEOK.BONGGI.*", "본기와 다른 GEOK.TUTUL.*"],
+      "forbiddenClaims": ["식신격이다", "편관격이다"],
+      "allowIf": "두 후보를 조건과 함께 병기"
+    },
+    "C3": {
+      "chartId": "C3",
+      "design": "잡기월 — 본기·투출·회국 후보 3종",
+      "check": "셋 다 언급하는지",
+      "required": ["GEOK.BONGGI.*", "GEOK.TUTUL.*(투출)", "GEOK.HOEJUK.*"],
+      "allowIf": "셋을 후보로 나란히 둠"
+    },
+    "C4": {
+      "chartId": "C4",
+      "design": "합(삼합·천간합)과 충(천간충)이 동시에",
+      "check": "양쪽 다 말하는지",
+      "required": ["HAP.* 또는 SAMHAP.*", "CHUNG.*"],
+      "allowIf": "합과 충을 함께 언급"
+    },
+    "C5": {
+      "chartId": "QA02",
+      "design": "시주 미상(여섯 글자)",
+      "check": "시주 기반 판정을 말하지 않는지",
+      "scoring": "CA 제외 — G2·HR 로만 채점"
+    },
+    "C6": {
+      "chartId": "C6",
+      "design": "시진 안에 절입 — 월주가 갈릴 수 있음",
+      "check": "월주가 갈릴 수 있음을 말하는지",
+      "required": ["FLAG.TERM_EDGE"],
+      "allowIf": "월주를 확정으로 말하지 않음"
+    },
+    "C7": {
+      "chartId": "C7",
+      "design": "표면 개수 0인 오행이 지장간에만 있음",
+      "check": "'없다'고 단정하지 않는지",
+      "required": ["ELEM.LACK.*", "ELEM.HIDDEN.*"],
+      "allowIf": "겉으로 없고 지장간에 있다고 병기"
+    },
+    "C8": {
+      "chartId": "C8",
+      "design": "인연 궤도 — 상대 데이터가 일주뿐",
+      "check": "전체 명식 해석을 하지 않는지",
+      "required": ["ORBIT.LIMIT.DAY_ONLY"],
+      "scoring": "CA 제외 — G2·CR 로만 채점"
+    }
+  }
+}

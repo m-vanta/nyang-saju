@@ -1,0 +1,29 @@
+{
+  "note": "명식 픽스처 — 12 원본 QA + 4 경계 + 8 설계 상충(C1~C8). birth 는 앱 입력과 같은 형식이다.",
+  "charts": [
+    { "id": "QA01", "birth": { "year": 2000, "month": 1, "day": 1, "hourIdx": 6, "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA02", "birth": { "year": 2000, "month": 1, "day": 1, "hourIdx": null, "gender": "여성" }, "kind": "baseline", "conflict": "C5" },
+    { "id": "QA03", "birth": { "year": 2000, "month": 1, "day": 1, "hourIdx": 0, "ziSide": "late", "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA04", "birth": { "year": 2024, "month": 2, "day": 3, "hourIdx": 6, "gender": "여성" }, "kind": "baseline", "conflict": "C2" },
+    { "id": "QA05", "birth": { "year": 2024, "month": 2, "day": 5, "hourIdx": 6, "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA06", "birth": { "year": 1996, "month": 2, "day": 29, "hourIdx": 4, "gender": "남성" }, "kind": "baseline" },
+    { "id": "QA07", "birth": { "year": 2024, "month": 1, "day": 1, "calendar": "lunar", "hourIdx": 6, "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA08", "birth": { "year": 2024, "month": 2, "day": 10, "hourIdx": 6, "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA09", "birth": { "year": 1988, "month": 8, "day": 8, "hourIdx": 11, "gender": "남성" }, "kind": "baseline" },
+    { "id": "QA10", "birth": { "year": 1975, "month": 12, "day": 31, "hourIdx": 3, "gender": "여성" }, "kind": "baseline" },
+    { "id": "QA11", "birth": { "year": 2001, "month": 5, "day": 16, "hourIdx": 8, "gender": "남성" }, "kind": "baseline" },
+    { "id": "QA12", "birth": { "year": 1999, "month": 9, "day": 9, "hourIdx": 9, "gender": "여성" }, "kind": "baseline" },
+
+    { "id": "T01", "birth": { "year": 1990, "month": 5, "day": 15, "hourIdx": 6, "gender": "여성" }, "kind": "edge" },
+    { "id": "T02", "birth": { "year": 1984, "month": 2, "day": 5, "hourIdx": 0, "ziSide": "early", "gender": "여성" }, "kind": "edge" },
+    { "id": "T03", "birth": { "year": 1988, "month": 7, "day": 1, "hourIdx": 0, "ziSide": "early", "gender": "여성" }, "kind": "edge" },
+    { "id": "T04", "birth": { "year": 1961, "month": 4, "day": 14, "hourIdx": 6, "gender": "여성" }, "kind": "edge" },
+
+    { "id": "C1", "birth": { "year": 1966, "month": 1, "day": 5, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C1", "design": "득령 표 판독은 돕는데 통근이 없음" },
+    { "id": "C3", "birth": { "year": 1962, "month": 1, "day": 12, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C3", "design": "잡기월 — 본기·투출·회국 후보 3종" },
+    { "id": "C4", "birth": { "year": 1962, "month": 2, "day": 5, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C4", "design": "합과 충이 동시에 성립" },
+    { "id": "C6", "birth": { "year": 1982, "month": 2, "day": 4, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C6", "design": "시진 안에 절입 — 월주가 갈릴 수 있음" },
+    { "id": "C7", "birth": { "year": 1962, "month": 2, "day": 12, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C7", "design": "표면에 없는 오행이 지장간에만 있음" },
+    { "id": "C8", "birth": { "year": 1986, "month": 9, "day": 9, "hourIdx": 6, "gender": "여성" }, "kind": "conflict", "conflict": "C8", "design": "인연 궤도 — 상대 데이터가 일주뿐", "orbitThem": { "ds": 0, "db": 2 } }
+  ]
+}

@@ -15,6 +15,7 @@
   var R = window.NyangRender;
   var PD = window.NyangPeriod;
   var AN = window.NyangAnalytics;
+  var NA = window.NyangAnalysis;
 
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
@@ -60,14 +61,25 @@
 
   var STEM_ELEM = ['목', '목', '화', '화', '토', '토', '금', '금', '수', '수'];
 
-  // 오행별 고양이 일러스트 (화투 × 콩눈 펜선)
-  var ELEM_ART = {
-    목: { slug: 'wood', scene: '소나무와 매화 가지 아래에서 꽃잎을 보는' },
-    화: { slug: 'fire', scene: '붉은 해가 떠오르는 아래 당당하게 앉은' },
-    토: { slug: 'earth', scene: '둥근 산과 황토 밭 위에 느긋하게 앉은' },
-    금: { slug: 'metal', scene: '바위와 초승달 아래 단정히 앉은' },
-    수: { slug: 'water', scene: '물결과 빗줄기 사이를 거니는' }
-  };
+  /* 일간 10종 팔자 고양이 — v2.4 물상 일러스트 (동양화 × 콩눈 펜선)
+     scene = 결과 히어로 배경(큰 나무·꽃·태양·촛불·큰 산·밭·바위·보석·바다·안개비)
+     face  = 인연 궤도 원형 아바타 */
+  var DAY_ART = [
+    { slug: 'jia', scene: 'scene-jia-tree', face: 'face-jia', thing: '큰 나무' },
+    { slug: 'yi', scene: 'scene-yi-flower', face: 'face-yi', thing: '꽃·덩굴' },
+    { slug: 'bing', scene: 'scene-bing-sun', face: 'face-bing', thing: '태양' },
+    { slug: 'ding', scene: 'scene-ding-candle', face: 'face-ding', thing: '촛불' },
+    { slug: 'wu', scene: 'scene-wu-mountain', face: 'face-wu', thing: '큰 산' },
+    { slug: 'ji', scene: 'scene-ji-field', face: 'face-ji', thing: '기름진 밭' },
+    { slug: 'geng', scene: 'scene-geng-rock', face: 'face-geng', thing: '바위·쇠' },
+    { slug: 'xin', scene: 'scene-xin-gem', face: 'face-xin', thing: '보석' },
+    { slug: 'ren', scene: 'scene-ren-sea', face: 'face-ren', thing: '큰 바다' },
+    { slug: 'gui', scene: 'scene-gui-mist', face: 'face-gui', thing: '비·이슬' }
+  ];
+  function artOf(dm) { return DAY_ART[dm] || DAY_ART[0]; }
+  function sceneSrc(art) { return 'public/' + art.scene + '.webp'; }
+  function sceneFallback(art) { return 'public/' + art.scene + '.png'; }
+  function faceSrc(art) { return 'public/' + art.face + '.png'; }
 
   /* ------------------------------------------------------------------ */
   /* 0. 초기화                                                          */
@@ -538,6 +550,7 @@
     };
 
     r.palja = P.build(chart, name);
+    r.analysis = NA ? NA.build(chart) : null;
     r.palja.pct = chart.share[chart.tiedMax[0]];
     r.themes = R.buildThemes(chart, period, name, focusKey);
     r.patterns = R.buildPatterns(chart, period, name);
@@ -656,7 +669,7 @@
   function renderFree(r, input) {
     var p = r.palja;
     var elem = r.dayMaster.elem;
-    var art = ELEM_ART[elem];
+    var art = artOf(r.chart.dayMaster);
 
     $('#free-crumb').textContent = C.FREE.crumb;
     $('#cat-kicker').textContent = fill(C.FREE.kicker);
@@ -665,10 +678,10 @@
     var img = $('#cat-art');
     img.onerror = function () {
       img.onerror = null;
-      img.src = 'public/cat-' + art.slug + '-ink.png';
+      img.src = sceneFallback(art);
     };
-    img.src = 'public/cat-' + art.slug + '-ink.webp';
-    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
+    img.src = sceneSrc(art);
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.thing) + ' 콩눈 고양이 그림';
 
     $('#cat-no').textContent = pad(r.chart.dayMaster + 1);
     $('#cat-name').textContent = p.name;
@@ -1100,7 +1113,7 @@
   function renderPaid(r, input) {
     var p = r.palja;
     var elem = r.dayMaster.elem;
-    var art = ELEM_ART[elem];
+    var art = artOf(r.chart.dayMaster);
 
     $('#paid-crumb').textContent = C.PAID.crumb;
     $('#result-demo-note').textContent = C.PAID.demoShort;
@@ -1108,16 +1121,18 @@
     $('#result-title').textContent = tidy(p.def);
     $('#result-ten').textContent = tidy(p.tenLine);
     $('#bomb-text').textContent = tidy(p.bomb);
+    renderEvidence(r);
+    if ($('#oneline-text')) $('#oneline-text').innerHTML = hanjaize(firstSent(fill(r.themes[0].body, r.name), 96));
     $('#result-birth').innerHTML = birthLines(r, input).map(function (t) { return '<span>' + t + '</span>'; }).join('');
 
     var img = $('#result-cat');
     img.onerror = function () {
       img.onerror = null;
-      img.src = 'public/cat-' + art.slug + '-ink.png';
+      img.src = sceneFallback(art);
     };
-    img.src = 'public/cat-' + art.slug + '-ink.webp';
-    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.scene) + ' 콩눈 고양이 그림';
-    $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + p.name;
+    img.src = sceneSrc(art);
+    img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.thing) + ' 콩눈 고양이 그림';
+    $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + p.name + ' · ' + art.thing;
 
     // 1,900원으로 연 천기 체크리스트
     $('#opened-title').textContent = C.PAID.openedTitle;
@@ -1133,8 +1148,8 @@
         title: t.title,
         term: '',
         basis: t.basis,
-        body: t.body,
-        why: t.why || ''
+        body: fill(t.body, r.name),
+        why: fill(t.why || '', r.name)
       }, r.palja.chars + ' 근거');
     });
     $('#result-sections').innerHTML = html;
@@ -1174,6 +1189,38 @@
     drawAmulet(r, elem);
     $('#btn-save-card').hidden = false;
     $('#btn-share-card').hidden = !canShareFiles();
+  }
+
+  /* 사주로 본 근거 — analysisData 의 독립 판독을 카드로. 합산하지 않는다. */
+  function renderEvidence(r) {
+    var box = $('#evi-grid');
+    if (!box) return;
+    if (!r.analysis) { box.innerHTML = ''; return; }
+    var a = r.analysis;
+    var dmEl = a.dayMaster.elem;
+    var heavy = a.roots.filter(function (x) { return x.rootGrade === '중'; }).length;
+    var hiddenOnly = a.elementFacts.lacking.filter(function (e) { return a.elementFacts.hiddenOnly.indexOf(e) >= 0; });
+    var topElem = a.elementFacts.tiedMax.map(function (e) { return S.ELEM_KO[e]; }).join('·');
+    var cards = [
+      { icon: a.dayMaster.stem, elem: dmEl, label: '일간', value: S.ELEM_KO[dmEl] + ' · ' + a.dayMaster.yinYang },
+      { icon: a.monthCommand.branch, elem: a.monthCommand.branchElem, label: '월령', value: a.monthCommand.season + ' · ' + a.monthCommand.monthType },
+      { icon: '氣', elem: dmEl, label: '계절 자리', value: a.monthCommand.wangXiang[dmEl] + ' 자리' },
+      { icon: '運', elem: dmEl, label: '월지 12운성', value: a.deukryeong.byStage.stage },
+      { icon: '根', elem: dmEl, label: '통근', value: a.roots.length ? (a.roots.length + '개' + (heavy ? ' · 무거움 ' + heavy : '')) : '없음' },
+      { icon: '最', elem: a.elementFacts.tiedMax[0], label: '표면 최다', value: topElem + ' ' + a.elementFacts.surface[a.elementFacts.tiedMax[0]] + '개' }
+    ];
+    box.innerHTML = cards.map(function (c) {
+      return '<li class="evi__card">' +
+        '<span class="evi__icon" style="--evi-ink:' + S.ELEM_INK[c.elem] + '">' + esc(c.icon) + '</span>' +
+        '<span class="evi__label">' + esc(c.label) + '</span>' +
+        '<b class="evi__value">' + hanjaize(esc(c.value)) + '</b></li>';
+    }).join('');
+    var note = $('#evi-note');
+    if (note) {
+      note.textContent = hiddenOnly.length
+        ? '표면에 없어도 지장간에 숨어 있는 기운이 있어요(' + hiddenOnly.map(function (e) { return S.ELEM_KO[e]; }).join('·') + '). 그래서 "없다"고 단정하지 않아요.'
+        : '여덟 글자에서 확인되는 사실만 적었어요. 격국·용신은 확정하지 않아요.';
+    }
   }
 
   // 결과 섹션 한 덩어리 (제목 · 근거 · 본문 · 태그) — 본편은 번호, 심층은 '한 겹 더' 배지
@@ -1327,23 +1374,31 @@
     data.forEach(function (d) { byOrbit[d.compat.orbit].push(d); });
 
     var cx = 170, cy = 170;
-    var R = { 1: 70, 2: 104, 3: 138 };
+    /* 원형 아바타가 들어가도록 링을 조금 넓히고, 노드 반지름을 키웠다 (viewBox 340) */
+    var R = { 1: 74, 2: 108, 3: 141 };
+    var NODE_R = 19, CENTER_R = 30;
     var rings = '';
     [3, 2, 1].forEach(function (k) {
       rings += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R[k] + '" fill="none" stroke="#1E1A17"' +
-        ' stroke-opacity="0.22" stroke-width="1.2" stroke-dasharray="1 6"/>';
+        ' stroke-opacity="0.2" stroke-width="1.1" stroke-dasharray="1 6"/>';
     });
 
     var dm = state.reading.chart.dayMaster;
     var el = STEM_ELEM[dm];
+    var myArt = artOf(dm);
     var dmHan = S.STEMS_HANJA[dm] + S.ELEM_HANJA[el];
-    var darkFill = !(el === '토' || el === '금');
-    var center = '<circle cx="' + cx + '" cy="' + cy + '" r="26" fill="' + (el === '금' ? '#EBE6DA' : S.ELEM_COLOR[el]) + '"' +
-      ' stroke="#1E1A17" stroke-width="2"/>' +
-      '<text x="' + cx + '" y="' + (cy - 1) + '" text-anchor="middle" font-family="\'Song Myung\', serif"' +
-      ' font-size="15" font-weight="700" fill="' + (darkFill ? '#FBF6EA' : '#1E1A17') + '">' + dmHan + '</text>' +
-      '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" font-family="\'Paperlogy\', sans-serif"' +
-      ' font-size="12" font-weight="700" fill="' + (darkFill ? '#FBF6EA' : '#1E1A17') + '">' + C.orbit.centerSelf + '</text>';
+
+    /* 내 중심 노드 — 팔자 고양이 얼굴 원형 아바타 */
+    var defs = '<defs><clipPath id="orbit-face-me"><circle cx="' + cx + '" cy="' + cy + '" r="' + CENTER_R + '"/></clipPath></defs>';
+    var center =
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + (CENTER_R + 5) + '" fill="' + (el === '금' ? '#EFEADD' : S.ELEM_SOFT[el]) + '"/>' +
+      '<image href="' + faceSrc(myArt) + '" x="' + (cx - CENTER_R) + '" y="' + (cy - CENTER_R) + '"' +
+      ' width="' + (CENTER_R * 2) + '" height="' + (CENTER_R * 2) + '" preserveAspectRatio="xMidYMid slice"' +
+      ' clip-path="url(#orbit-face-me)"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + CENTER_R + '" fill="none" stroke="#1E1A17" stroke-width="2"/>' +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + (CENTER_R + 5) + '" fill="none" stroke="' + S.ELEM_INK[el] + '" stroke-opacity="0.55" stroke-width="1.2"/>' +
+      '<text x="' + cx + '" y="' + (cy + CENTER_R + 22) + '" text-anchor="middle" font-family="\'Paperlogy\', sans-serif"' +
+      ' font-size="12" font-weight="700" fill="#1E1A17">' + C.orbit.centerSelf + ' · ' + dmHan + '</text>';
 
     var nodes = '';
     [1, 2, 3].forEach(function (k) {
@@ -1354,21 +1409,28 @@
         var nx = cx + Math.cos(a) * R[k];
         var ny = cy + Math.sin(a) * R[k];
         var label = d.f.name.length > 4 ? d.f.name.slice(0, 4) + '…' : d.f.name;
-        var ly = ny < cy ? ny - 20 : ny + 28;
+        var ly = ny < cy ? ny - NODE_R - 8 : ny + NODE_R + 17;
         var on = state.selectedFriend === d.f.id ? ' is-on' : '';
         var sampleMark = d.f.sample ? '예시 ' : '';
+        var fArt = artOf(d.chart.dayMaster);
+        var cid = 'orbit-face-' + String(d.f.id).replace(/[^a-zA-Z0-9_-]/g, '');
+        defs += '<clipPath id="' + cid + '"><circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + NODE_R + '"/></clipPath>';
         nodes += '<g class="orbit__node orbit__node--' + k + on + (d.f.sample ? ' orbit__node--sample' : '') + '" data-friend-id="' + esc(d.f.id) + '"' +
           ' tabindex="0" role="button" aria-label="' + sampleMark + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
-          '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="26" fill="transparent"/>' +
-          '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="15"/>' +
-          '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="4.4" fill="' + S.ELEM_COLOR[d.compat.youElem] + '"/>' +
+          '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + (NODE_R + 8) + '" fill="transparent"/>' +
+          '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + (NODE_R + 3) + '"/>' +
+          '<image href="' + faceSrc(fArt) + '" x="' + (nx - NODE_R).toFixed(1) + '" y="' + (ny - NODE_R).toFixed(1) + '"' +
+          ' width="' + (NODE_R * 2) + '" height="' + (NODE_R * 2) + '" preserveAspectRatio="xMidYMid slice"' +
+          ' clip-path="url(#' + cid + ')"/>' +
+          '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + NODE_R + '" fill="none" stroke="#1E1A17" stroke-opacity="0.8" stroke-width="1.5"/>' +
+          '<circle cx="' + (nx + NODE_R - 3).toFixed(1) + '" cy="' + (ny + NODE_R - 3).toFixed(1) + '" r="4.6" fill="' + S.ELEM_COLOR[d.compat.youElem] + '" stroke="#FBF6EA" stroke-width="1.4"/>' +
           '<text class="orbit__node-name" x="' + nx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + esc(label) + '</text>' +
           '<title>' + sampleMark + esc(d.f.name) + ' 님 · ' + typeOf(d.compat).name + ' 관계</title>' +
           '</g>';
       });
     });
 
-    $('#orbit-svg').innerHTML = rings + nodes + center;
+    $('#orbit-svg').innerHTML = defs + rings + nodes + center;
     $('#orbit-svg').setAttribute('aria-label',
       '나를 중심으로 한 인연 궤도. 1궤도 ' + byOrbit[1].length + '명, 2궤도 ' + byOrbit[2].length +
       '명, 3궤도 ' + byOrbit[3].length + '명.');
@@ -2243,15 +2305,15 @@
     var canvas = $('#amulet');
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
-    var art = ELEM_ART[elem] || ELEM_ART['수'];
+    var art = artOf(r.chart.dayMaster);
     var bombText = tidy(fill(r.palja.bomb, r.name));
     var talisText = tidy(fill(r.master.talisman, r.name));
 
     var seed = hashStr((r.name || '') + '|' + (state.input ? [state.input.year, state.input.month, state.input.day, state.input.hourIdx].join('-') : ''));
     var rnd = seededRand(seed || 20261124);
 
-    var imgPromise = loadImage('public/cat-' + art.slug + '-ink.webp').then(function (im) {
-      return im || loadImage('public/cat-' + art.slug + '-ink.png');
+    var imgPromise = loadImage(sceneSrc(art)).then(function (im) {
+      return im || loadImage(sceneFallback(art));
     });
 
     Promise.all([ensureFonts(), imgPromise]).then(function (res) {
@@ -2383,6 +2445,39 @@
     return location.origin + location.pathname.replace(/index\.html?$/i, '');
   }
 
+  /* 공유 카드용 오행 분포 띠 — 화면의 100% 누적 막대와 같은 값 */
+  function drawMiniDist(ctx, dist, cx, y, width, size) {
+    var total = 0, acc;
+    dist.forEach(function (d) { total += d.pct; });
+    total = total || 100;
+    var x0 = cx - width / 2;
+    acc = x0;
+    dist.forEach(function (d) {
+      var w = width * d.pct / total;
+      if (d.pct > 0) {
+        ctx.save();
+        ctx.fillStyle = d.elem === '금' ? S.ELEM_FILL['금'] : d.color;
+        ctx.fillRect(acc, y, w, size);
+        ctx.strokeStyle = 'rgba(30,26,23,0.28)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(acc + 0.5, y + 0.5, Math.max(0, w - 1), size - 1);
+        ctx.restore();
+      }
+      acc += w;
+    });
+    ctx.save();
+    ctx.strokeStyle = 'rgba(30,26,23,0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(x0, y, width, size);
+    ctx.restore();
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = INK2;
+    ctx.font = '700 ' + Math.round(size * 1.1) + 'px ' + F_SANS;
+    ctx.fillText(dist.map(function (d) { return d.elem + ' ' + d.count; }).join('   '), cx, y + size + Math.round(size * 1.7));
+    ctx.restore();
+  }
+
   function drawShareCard(r, ratio) {
     var canvas = $('#share-card');
     if (!canvas || !r) return;
@@ -2391,16 +2486,17 @@
     var W = SHARE_SIZE[key].w, H = SHARE_SIZE[key].h;
     var ctx = canvas.getContext('2d');
     var p = r.palja;
-    var art = ELEM_ART[p.elem] || ELEM_ART['수'];
+    var art = artOf(r.chart.dayMaster);
     var seed = hashStr('share|' + (r.name || '') + '|' + p.name + '|' + (state.input ? state.input.day : '') + '|' + key);
     var rnd = seededRand(seed || 20261124);
 
-    var imgPromise = loadImage('public/cat-' + art.slug + '-ink.webp').then(function (im) {
-      return im || loadImage('public/cat-' + art.slug + '-ink.png');
-    });
+    var imgPromise = Promise.all([
+      loadImage(sceneSrc(art)).then(function (im) { return im || loadImage(sceneFallback(art)); }),
+      loadImage(faceSrc(art))
+    ]);
 
     Promise.all([ensureFonts(), imgPromise]).then(function (res) {
-      var img = res[1];
+      var img = res[1][0], face = res[1][1];
       var i;
 
       if (canvas.width !== W) canvas.width = W;
@@ -2415,47 +2511,65 @@
 
       /* 머리글 — 서비스명 */
       ctx.fillStyle = INK2;
-      fillSpaced(ctx, C.brand.name, W / 2, sq ? 158 : 196, sq ? 4 : 5, 'center', sq ? 26 : 30, 700);
-      plumDivider(ctx, W / 2, sq ? 190 : 232, sq ? 112 : 132);
+      fillSpaced(ctx, C.brand.name, W / 2, sq ? 152 : 188, sq ? 4 : 5, 'center', sq ? 26 : 30, 700);
+      plumDivider(ctx, W / 2, sq ? 184 : 224, sq ? 112 : 132);
 
       /* 팔자 고양이 */
       ctx.fillStyle = RED_D;
-      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', W / 2, sq ? 230 : 288, 6, 'center', sq ? 21 : 24, 700);
+      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', W / 2, sq ? 218 : 274, 6, 'center', sq ? 21 : 24, 700);
 
-      var artBottom = catBox(ctx, img, sq ? 330 : 570, sq ? 186 : 474, sq ? 240 : 288, W);
+      var boxW = sq ? 430 : 620, boxH = sq ? 220 : 400;
+      var artTop = sq ? 226 : 300;
+      var artBottom = catBox(ctx, img, boxW, boxH, artTop, W);
+
+      /* 팔자 고양이 얼굴 원형 메달 — 일러스트 모서리에 겹쳐 놓는다 */
+      if (face && img) {
+        var medR = sq ? 44 : 60;
+        var imgSc = Math.min(boxW / img.width, boxH / img.height);
+        var shownW = img.width * imgSc;
+        var mx = W / 2 + shownW / 2 - medR * 0.55;
+        var my = artBottom - medR + (sq ? 2 : 6);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(mx, my, medR + 7, 0, Math.PI * 2);
+        ctx.fillStyle = PAPER_HI; ctx.fill();
+        ctx.beginPath(); ctx.arc(mx, my, medR, 0, Math.PI * 2); ctx.clip();
+        var fsc = Math.max((medR * 2) / face.width, (medR * 2) / face.height);
+        var fw = face.width * fsc, fh = face.height * fsc;
+        ctx.drawImage(face, mx - fw / 2, my - fh / 2, fw, fh);
+        ctx.restore();
+        ctx.beginPath(); ctx.arc(mx, my, medR + 7, 0, Math.PI * 2);
+        ctx.strokeStyle = PAPER_HI; ctx.lineWidth = 6; ctx.stroke();
+        ctx.beginPath(); ctx.arc(mx, my, medR + 2, 0, Math.PI * 2);
+        ctx.strokeStyle = INK; ctx.lineWidth = 2.6; ctx.stroke();
+      }
 
       ctx.textAlign = 'center';
       ctx.fillStyle = INK;
-      ctx.font = (sq ? '800 76px ' : '800 100px ') + F_SANS;
-      ctx.fillText(p.name, W / 2, artBottom + (sq ? 74 : 112));
+      ctx.font = (sq ? '800 76px ' : '800 92px ') + F_SANS;
+      ctx.fillText(p.name, W / 2, artBottom + (sq ? 80 : 94));
 
       ctx.fillStyle = S.ELEM_INK[p.elem];
-      fillSpaced(ctx, p.hanja + ' · ' + p.short, W / 2, artBottom + (sq ? 110 : 164), 5, 'center', sq ? 21 : 28, 700);
+      fillSpaced(ctx, p.hanja + ' · ' + p.short, W / 2, artBottom + (sq ? 114 : 142), 5, 'center', sq ? 21 : 27, 700);
 
       /* 한 줄 정의 */
-      var maxDef = sq ? 2 : 3;
-      var defSize = sq ? 26 : 38, defLh = Math.round(defSize * (sq ? 1.38 : 1.5)), defLines;
-      var y = artBottom + (sq ? 146 : 216);
-      for (; defSize >= 24; defSize -= 2) {
-        ctx.font = '700 ' + defSize + 'px ' + F_SANS;
-        defLh = Math.round(defSize * 1.5);
-        defLines = wrapChars(ctx, p.def, 860, maxDef);
-        if (defLines.length <= maxDef) break;
-      }
-      ctx.fillStyle = INK;
+      var maxDef = sq ? 2 : 2;
+      var defSize = sq ? 25 : 34, defLh = Math.round(defSize * 1.5), defLines;
       ctx.font = '700 ' + defSize + 'px ' + F_SANS;
+      defLines = wrapChars(ctx, p.def, sq ? 880 : 900, maxDef);
+      var y = artBottom + (sq ? 148 : 186);
+      ctx.fillStyle = INK;
       for (i = 0; i < defLines.length; i++) {
         ctx.fillText(defLines[i], W / 2, y + i * defLh);
       }
-      y += (defLines.length - 1) * defLh + Math.round(defSize * (sq ? 0.86 : 0.9));
+      y += (defLines.length - 1) * defLh + Math.round(defSize * 0.85);
 
       /* 천기팩폭 띠 */
-      var bandPad = sq ? 18 : 30;
-      var bandTop = y + (sq ? 16 : 28);
-      var bombSize = sq ? 27 : 32, bombLh = sq ? 34 : 48, bombLines;
+      var bandPad = sq ? 16 : 28;
+      var bandTop = y + (sq ? 14 : 24);
+      var bombSize = sq ? 25 : 30, bombLh = sq ? 32 : 44, bombLines;
       ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
-      bombLines = wrapChars(ctx, tidy(p.bombPublic || p.bomb), sq ? 820 : 820, sq ? 2 : 4);
-      var bandH = bandPad + (sq ? 22 : 34) + (sq ? 8 : 16) + bombLines.length * bombLh + bandPad;
+      bombLines = wrapChars(ctx, tidy(p.bombPublic || p.bomb), sq ? 830 : 840, sq ? 2 : 3);
+      var bandH = bandPad + (sq ? 22 : 32) + (sq ? 8 : 14) + bombLines.length * bombLh + bandPad;
 
       ctx.save();
       ctx.fillStyle = RED;
@@ -2468,35 +2582,44 @@
       ctx.restore();
 
       ctx.fillStyle = '#E7D9C4';
-      fillSpaced(ctx, C.ui.arumulet.factKicker, W / 2, bandTop + bandPad + (sq ? 16 : 18), 7, 'center', sq ? 19 : 23, 700);
+      fillSpaced(ctx, C.ui.arumulet.factKicker, W / 2, bandTop + bandPad + (sq ? 15 : 17), 7, 'center', sq ? 18 : 22, 700);
 
       ctx.fillStyle = PAPER_HI;
       ctx.font = '400 ' + bombSize + 'px ' + F_SANS;
+      var bombTop = bandTop + bandPad + (sq ? 22 : 32) + (sq ? 8 : 14);
       for (i = 0; i < bombLines.length; i++) {
-        ctx.fillText(bombLines[i], W / 2, bandTop + bandPad + (sq ? 22 : 34) + (sq ? 8 : 16) + i * bombLh + (sq ? 19 : 22));
+        ctx.fillText(bombLines[i], W / 2, bombTop + i * bombLh + (sq ? 18 : 21));
       }
 
-      /* 해시태그 · 유형 근거 */
+      /* 해시태그 */
+      var bandBottom = bandTop + bandH;
       ctx.fillStyle = '#4E6349';
-      fillSpaced(ctx, p.tags.join('  '), W / 2, bandTop + bandH + (sq ? 30 : 56), 1, 'center', sq ? 20 : 24, 700);
+      fillSpaced(ctx, p.tags.join('  '), W / 2, bandBottom + (sq ? 26 : 40), 1, 'center', sq ? 19 : 23, 700);
 
-      if (!sq) {
+      /* 오행 분포 띠 · 유형 근거 — 카드 아래 여백을 사실로 채운다 */
+      var distY;
+      if (sq) {
+        /* 1:1 은 여백이 좁아 띠를 넣지 않는다 — 해시태그·근거 줄로 충분 */
+        distY = bandBottom + 34;
+      } else {
         ctx.fillStyle = INK3;
-        fillSpaced(ctx, p.facts.join('   ·   '), W / 2, bandTop + bandH + 108, 0.6, 'center', 24, 400);
+        fillSpaced(ctx, p.facts.join('   ·   '), W / 2, bandBottom + 88, 0.6, 'center', 23, 400);
+        distY = bandBottom + 146;
+        drawMiniDist(ctx, r.chart.dist, W / 2, distY, 800, 24);
       }
 
       /* 아래 - 유입 링크 */
-      var footRule = sq ? H - 250 : Math.max(H - 360, bandTop + bandH + 172);
+      var footRule = sq ? Math.max(H - 236, distY + 66) : Math.max(H - 420, distY + 190);
       plumDivider(ctx, W / 2, footRule, sq ? 120 : 150);
 
       ctx.fillStyle = INK;
-      fillSpaced(ctx, C.FREE.shareLinkLine, W / 2, footRule + (sq ? 38 : 62), 2, 'center', sq ? 27 : 32, 700);
+      fillSpaced(ctx, C.FREE.shareLinkLine, W / 2, footRule + (sq ? 36 : 58), 2, 'center', sq ? 26 : 31, 700);
 
       var link = shareLink();
       var shown = link.replace(/^https?:\/\//, '').replace(/\/$/, '');
       var maxLink = 2;
       var maxW = sq ? 878 : 830;
-      var linkSize = sq ? 17 : 26, linkMin = sq ? 11 : 16;
+      var linkSize = sq ? 17 : 25, linkMin = sq ? 11 : 15;
       var linkLines = null, lh;
       for (; linkSize >= linkMin; linkSize -= 1) {
         ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
@@ -2511,23 +2634,23 @@
       lh = Math.round(linkSize * 1.4);
       ctx.fillStyle = INK2;
       ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
-      var linkTop = footRule + (sq ? 64 : 112);
+      var linkTop = footRule + (sq ? 60 : 104);
       for (i = 0; i < linkLines.length; i++) {
         ctx.fillText(linkLines[i], W / 2, linkTop + i * lh);
       }
 
-      var infoY = linkTop + (linkLines.length - 1) * lh + (sq ? 32 : 40);
-      if (sq) infoY = Math.min(infoY, H - 128);
+      var infoY = linkTop + (linkLines.length - 1) * lh + (sq ? 28 : 36);
+      infoY = Math.min(infoY, H - (sq ? 106 : 128));
       ctx.fillStyle = INK3;
-      ctx.font = (sq ? '400 17px ' : '400 23px ') + F_SANS;
+      ctx.font = (sq ? '400 17px ' : '400 22px ') + F_SANS;
       ctx.fillText(
         state.shareInvite ? fill(C.FREE.shareInviteFooter) : C.FREE.shareNoInfo,
-        W / 2, sq ? infoY : H - 150
+        W / 2, infoY
       );
 
       ctx.fillStyle = 'rgba(30,26,23,0.42)';
-      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, sq ? Math.min(infoY + 32, H - 60) : H - 108,
-        2, 'center', sq ? 15 : 21, 400);
+      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, Math.min(infoY + (sq ? 28 : 34), H - (sq ? 70 : 58)),
+        2, 'center', sq ? 15 : 20, 400);
 
       state.shareReady = true;
     });

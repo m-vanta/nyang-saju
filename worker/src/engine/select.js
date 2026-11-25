@@ -90,6 +90,22 @@
     return chips.slice(0, 5);
   }
 
+  /* 문장이 실제로 인용한 Finding id — glob 을 실제 id 로 편다(비교 하네스·검증기용) */
+  function expandIds(list, idx) {
+    var out = [];
+    (list || []).forEach(function (q) {
+      if (q.charAt(q.length - 1) === '*') {
+        var pre = q.slice(0, -1);
+        Object.keys(idx.map).forEach(function (k) {
+          if (k.indexOf(pre) === 0 && out.indexOf(k) < 0) out.push(k);
+        });
+        return;
+      }
+      if (idx.has(q) && out.indexOf(q) < 0) out.push(q);
+    });
+    return out;
+  }
+
   function fill(text, vars) {
     return String(text == null ? '' : text).replace(/\{(\w+)\}/g, function (m, k) {
       return vars[k] != null ? String(vars[k]) : m;
@@ -116,10 +132,7 @@
     var base = C.PALJA[dm];
     var core = R.core(chart);
     var idx = makeIndex(core);
-    if (chart.dohwa) {
-      // dohwa 는 신살 표시일 뿐 판정 문장의 조건으로 쓰지 않는다 — 무료 팩폭 훅에서만 쓴다.
-      idx.map['FLAG.DOHWA'] = { id: 'FLAG.DOHWA', display: { short: '도화', long: '도화가 앉아 있어요.' } };
-    }
+    // FLAG.DOHWA 는 rules/findings.js 가 낸다. 렌더 층에서 판정을 합성하지 않는다(v2.4).
     var topTen = T.TEN_ORDER.map(function (t) { return { god: t, n: chart.tenCount[t] || 0 }; })
       .filter(function (x) { return x.n > 0; })
       .sort(function (a, b) { return b.n - a.n || T.TEN_ORDER.indexOf(a.god) - T.TEN_ORDER.indexOf(b.god); });
@@ -210,7 +223,8 @@
         label: s ? fill(s.label, vars) : '',
         text: s ? fill(s.text, vars) : '',
         id: s ? s.id : null,
-        basis: s ? basisOf(s, idx) : []
+        basis: s ? basisOf(s, idx) : [],
+        refs: s ? expandIds(s.requires, idx) : []
       };
     });
 
@@ -263,6 +277,7 @@
     var coreIdx = makeIndex(core);
     var periodIdx = makeIndex(R.period(period));
     var basis = [];
+    var basisIds = [];
     function addBasis(list) {
       list.forEach(function (id) {
         if (id.charAt(id.length - 1) === '*') {
@@ -271,6 +286,7 @@
             Object.keys(ix.map).forEach(function (k) {
               if (k.indexOf(pre) === 0) {
                 var f = ix.map[k];
+                if (basisIds.indexOf(k) === -1) basisIds.push(k);
                 if (f && f.display && basis.indexOf(f.display.short) === -1) basis.push(f.display.short);
               }
             });
@@ -278,6 +294,7 @@
           return;
         }
         var f = coreIdx.map[id] || periodIdx.map[id];
+        if (f && basisIds.indexOf(id) === -1) basisIds.push(id);
         if (f && f.display && basis.indexOf(f.display.short) === -1) basis.push(f.display.short);
       });
     }
@@ -302,7 +319,8 @@
         term: chart.dayMasterName + ' · ' + chart.strongText + ' · ' + topGod + ' ' + (chart.tenCount[topGod] || 0),
         body: bodyFor(key),
         why: flow.text,
-        basis: basis.slice()
+        basis: basis.slice(),
+        refs: basisIds.slice()
       };
     }
 
@@ -335,9 +353,10 @@
         label: s ? fill(s.label, vars) : '',
         text: s ? fill(s.text, vars) : '',
         id: s ? s.id : null,
-        basis: s ? basisOf(s, idx) : []
+        basis: s ? basisOf(s, idx) : [],
+        refs: s ? expandIds(s.requires, idx) : []
       };
-    }).concat(closer ? [{ label: fill(closer.label, vars), text: fill(closer.text, vars), id: closer.id, basis: basisOf(closer, idx) }] : []);
+    }).concat(closer ? [{ label: fill(closer.label, vars), text: fill(closer.text, vars), id: closer.id, basis: basisOf(closer, idx), refs: expandIds(closer.requires, idx) }] : []);
   }
 
   /* 반복되는 인생 패턴 3 — ① 십성 ② 일주 ③ 대운·세운(천간·지지 분리) */
@@ -397,6 +416,7 @@
     basisOf: basisOf,
     makeIndex: makeIndex,
     fill: fill,
+    expandIds: expandIds,
     buildFree: buildFree,
     buildPaidTraits: buildPaidTraits,
     buildPatterns: buildPatterns,

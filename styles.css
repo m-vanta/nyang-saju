@@ -1524,6 +1524,8 @@ h1, h2, h3, p, figure, blockquote { margin: 0; }
 
 .postcard__elem {
   display: inline-flex;
+  border: 0;
+  background: transparent;
   align-items: center;
   gap: 6px;
   margin-top: 6px;
@@ -3513,4 +3515,218 @@ body.is-free.is-free-scrolled .sticky-cta { display: flex; animation: ctaUp 0.35
   border-top: 1px dotted var(--rule-2);
   color: var(--ink-3) !important;
   font-size: 13px !important;
+}
+
+/* ==========================================================================
+   v2.4 — 팔자 고양이 물상 일러스트 히어로 · 원형 아바타 궤도 · 프리미엄 리포트
+   (잡다한 장식은 빼고, 일러스트를 쓰는 방식만 남긴다)
+   ========================================================================== */
+
+/* --- 1. 무료 결과 히어로: 일러스트가 주인공 ---------------------------- */
+
+.catcard__stage {
+  position: relative;
+  height: 396px;
+  margin-top: 10px;
+  border: 1.4px solid var(--ink);
+  background: var(--paper-hi);
+  overflow: hidden;
+}
+
+.catcard__stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(251, 246, 234, 0.55);
+}
+
+.catcard__cat {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 58%;
+}
+
+/* 세로 '팔자' 패는 히어로에서 뺀다 — 일러스트를 가리지 않게 */
+.catcard__plaque { display: none; }
+
+.catcard__plate { margin-top: 12px; }
+
+/* --- 2. 유료 결과 히어로: 같은 물상, 리포트 머리로 --------------------- */
+
+.postcard__hero {
+  margin: 18px auto 0;
+  width: 100%;
+  background: var(--paper-hi);
+}
+
+.postcard__cat {
+  display: block;
+  width: 100%;
+  height: 380px;
+  border: 1.4px solid var(--ink);
+  max-width: none;
+  margin: 0;
+  object-fit: cover;
+  object-position: center 58%;
+}
+
+.postcard__elem { margin-top: 10px; }
+
+/* --- 3. 한 줄로 정리하면 ---------------------------------------------- */
+
+.oneline {
+  position: relative;
+  margin: 20px 0 0;
+  padding: 18px 16px 17px;
+  background: var(--paper-hi);
+  border: 1px solid var(--rule-2);
+  border-left: 3px solid var(--red);
+}
+
+.oneline__label {
+  display: block;
+  font-family: var(--sans);
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--red-2, #A93222);
+}
+
+.oneline__text {
+  margin: 7px 0 0;
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.62;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+/* --- 4. 사주로 본 근거 — 판독 카드 ------------------------------------ */
+
+.evi { margin-top: 26px; }
+
+.evi__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
+  gap: 8px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.evi__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 6px 11px;
+  background: var(--paper-hi);
+  border: 1px solid var(--rule-2);
+  text-align: center;
+}
+
+.evi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.4px solid var(--evi-ink, var(--ink));
+  color: var(--evi-ink, var(--ink));
+  font-family: var(--hanja, 'Song Myung', serif);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(251, 246, 234, 0.9);
+}
+
+.evi__label {
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+
+.evi__value {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--ink-2);
+  word-break: keep-all;
+}
+
+.evi__note {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px dotted var(--rule-2);
+  font-family: var(--serif);
+  font-size: var(--fs-cap);
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+/* --- 5. 절제된 수묵 구분선 (굵은 먹선 → 옅은 붓결) -------------------- */
+
+.entry {
+  border-top: 0;
+  padding-top: 24px;
+}
+
+.entry::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(30, 26, 23, 0.42) 0%, rgba(30, 26, 23, 0.22) 46%, rgba(30, 26, 23, 0.06) 100%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 72%, transparent 100%);
+}
+
+.entry:first-child::before { display: none; }
+
+.entry__basis {
+  background: transparent;
+  border-left: 0;
+  padding: 0;
+  margin: -2px 0 14px;
+}
+
+/* 근거 칩을 카드처럼 — 사주 근거 아이콘 카드 톤 */
+.entry__basis-list {
+  gap: 5px;
+}
+
+.entry__basis-list > span {
+  padding: 3px 8px 3px;
+  border: 1px solid var(--rule-2);
+  background: var(--paper-hi);
+  font-size: var(--fs-cap);
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.entry__basis-list i { display: none; }
+.entry__basis-list span.han { padding: 0; border: 0; background: none; }
+
+/* --- 6. 인연 궤도 — 원형 아바타 -------------------------------------- */
+
+.orbit__node--1 .orbit__node-ring { fill: var(--sage); stroke: var(--sage-2); stroke-width: 2; }
+.orbit__node--2 .orbit__node-ring { fill: var(--paper-hi); stroke: var(--gold-2); stroke-width: 2; }
+.orbit__node--3 .orbit__node-ring { fill: var(--paper); stroke: var(--ink-3); stroke-width: 1.8; stroke-dasharray: 4 3; }
+.orbit__node.is-on .orbit__node-ring { stroke: var(--red); stroke-width: 3; }
+.orbit__node image { pointer-events: none; }
+
+@media (max-width: 400px) {
+  .catcard__stage { height: 360px; }
+  .postcard__cat { height: 340px; }
+  .oneline__text { font-size: 16px; }
 }
