@@ -506,8 +506,14 @@
           <p class="catcard__kicker" id="cat-kicker">민지 님의 팔자 고양이</p>
 
           <div class="catcard__stage">
-            <span class="catcard__plaque" aria-hidden="true">팔자</span>
-            <img class="catcard__cat" id="cat-art" src="public/cat-water-ink.webp" alt="일간 오행에 맞춘 콩눈 고양이 그림" />
+            <div class="scene scene--hero" id="cat-scene" data-weather="rain">
+              <span class="scene__frame">
+                <img class="scene__img" id="cat-art" src="public/cat-water-ink.webp" alt="일간 오행에 맞춘 콩눈 고양이 그림" />
+              </span>
+              <span class="scene__mist scene__mist--a" aria-hidden="true"></span>
+              <span class="scene__mist scene__mist--b" aria-hidden="true"></span>
+              <span class="scene__motes" aria-hidden="true"></span>
+            </div>
           </div>
 
           <div class="catcard__plate">
@@ -640,6 +646,19 @@
           <div class="invite" id="invite-card" hidden></div>
 
           <div class="orbit__map">
+            <div class="orbit__sky" aria-hidden="true">
+              <svg viewBox="0 0 340 170" preserveAspectRatio="none">
+                <g class="orbit__clouds">
+                  <ellipse cx="58" cy="46" rx="44" ry="7" />
+                  <ellipse cx="252" cy="26" rx="32" ry="5.6" />
+                  <ellipse cx="168" cy="78" rx="50" ry="6.6" />
+                </g>
+                <path d="M-20 170C6 132 28 104 54 126c18 16 34 28 52 44Z" />
+                <path d="M74 170c38-58 72-92 108-50 16 20 26 34 34 50Z" />
+                <path d="M196 170c32-44 62-70 94-38 14 14 26 24 40 38Z" />
+                <path d="M-20 170c90-22 170-14 250-24 50-6 86 4 130 24Z" opacity=".8" />
+              </svg>
+            </div>
             <svg id="orbit-svg" viewBox="0 0 340 340" role="img" aria-label="나를 중심으로 친구들이 세 개의 궤도에 놓인 인연 지도"></svg>
           </div>
 
@@ -715,7 +734,14 @@
           <h2 class="postcard__title" id="result-title"></h2>
           <p class="postcard__ten" id="result-ten"></p>
           <figure class="postcard__hero">
-            <img class="postcard__cat" id="result-cat" src="public/cat-water-ink.webp" alt="일간 오행에 맞춘 콩눈 고양이 그림" />
+            <div class="scene scene--paid" id="result-scene" data-weather="rain">
+              <span class="scene__frame">
+                <img class="scene__img" id="result-cat" src="public/cat-water-ink.webp" alt="일간 오행에 맞춘 콩눈 고양이 그림" />
+              </span>
+              <span class="scene__mist scene__mist--a" aria-hidden="true"></span>
+              <span class="scene__mist scene__mist--b" aria-hidden="true"></span>
+              <span class="scene__motes" aria-hidden="true"></span>
+            </div>
             <figcaption class="postcard__elem" id="result-elem-art"></figcaption>
           </figure>
           <p class="postcard__birth" id="result-birth"></p>

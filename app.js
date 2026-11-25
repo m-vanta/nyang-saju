@@ -82,6 +82,63 @@
   function faceSrc(art) { return 'public/' + art.face + '.png'; }
 
   /* ------------------------------------------------------------------ */
+  /* 장면 연출 — 일러스트 위로 오행 물상에 맞는 공기(粒子)를 뿌린다     */
+  /* ------------------------------------------------------------------ */
+
+  var SCENE_WEATHER = { '목': 'petal', '화': 'ember', '토': 'dust', '금': 'glint', '수': 'rain' };
+
+  function paintScene(id, elem) {
+    var scene = document.getElementById(id);
+    if (!scene) return;
+    var kind = SCENE_WEATHER[elem] || 'mist';
+    scene.setAttribute('data-weather', kind);
+    var box = scene.querySelector('.scene__motes');
+    if (!box) return;
+    var n = kind === 'rain' ? 20 : (kind === 'dust' ? 16 : 14);
+    var html = '', i;
+    for (i = 0; i < n; i++) {
+      html += '<i style="--x:' + (Math.random() * 100).toFixed(1) + '%;--y:' + (Math.random() * 100).toFixed(1) + '%;' +
+        '--d:' + (-Math.random() * 9).toFixed(2) + 's;--t:' + (5.5 + Math.random() * 6).toFixed(2) + 's;' +
+        '--o:' + (0.22 + Math.random() * 0.5).toFixed(2) + ';--s:' + (0.7 + Math.random() * 0.8).toFixed(2) + '"></i>';
+    }
+    box.innerHTML = html;
+  }
+
+  /* 스크롤에 따른 미세 패럴랙스 — 그림이 화면보다 조금 느리게 지나간다 */
+  var sceneSync = null;
+
+  function bindSceneParallax() {
+    var app = $('#app');
+    if (!app) return;
+    var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var ticking = false;
+
+    function frame() {
+      ticking = false;
+      if (reduce && reduce.matches) return;
+      var box = app.getBoundingClientRect();
+      var mid = box.top + box.height / 2;
+      $$('.scene').forEach(function (s) {
+        var r = s.getBoundingClientRect();
+        if (r.bottom < box.top - 80 || r.top > box.bottom + 80) return;
+        var d = (r.top + r.height / 2 - mid) / box.height;
+        d = Math.max(-1, Math.min(1, d));
+        s.style.setProperty('--py', (d * 16).toFixed(1) + 'px');
+        s.style.setProperty('--pscale', (1 + Math.min(0.03, Math.abs(d) * 0.02)).toFixed(3));
+      });
+    }
+
+    app.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(frame);
+    }, { passive: true });
+
+    sceneSync = frame;
+    frame();
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 0. 초기화                                                          */
   /* ------------------------------------------------------------------ */
 
@@ -98,6 +155,7 @@
     bindOrbit();
     bindShare();
     bindResultActions();
+    bindSceneParallax();
     syncDays();
     state.friends = loadFriends();
     parseInvite();
@@ -421,6 +479,7 @@
     document.body.classList.toggle('is-paid', id === 'screen-result');
     document.body.classList.remove('is-free-scrolled');
     $('#app').scrollTo({ top: 0, behavior: 'auto' });
+    if (sceneSync) sceneSync();
   }
 
   function backToFree() {
@@ -682,6 +741,7 @@
     };
     img.src = sceneSrc(art);
     img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.thing) + ' 콩눈 고양이 그림';
+    paintScene('cat-scene', elem);
 
     $('#cat-no').textContent = pad(r.chart.dayMaster + 1);
     $('#cat-name').textContent = p.name;
@@ -1132,6 +1192,7 @@
     };
     img.src = sceneSrc(art);
     img.alt = S.ELEM_HANJA[elem] + ' · ' + p.name + ' — ' + (r.master.scene || art.thing) + ' 콩눈 고양이 그림';
+    paintScene('result-scene', elem);
     $('#result-elem-art').innerHTML = '<b style="color:' + S.ELEM_INK[elem] + '">' + S.ELEM_HANJA[elem] + '</b> · ' + p.name + ' · ' + art.thing;
 
     // 1,900원으로 연 천기 체크리스트
@@ -1377,10 +1438,17 @@
     /* 원형 아바타가 들어가도록 링을 조금 넓히고, 노드 반지름을 키웠다 (viewBox 340) */
     var R = { 1: 74, 2: 108, 3: 141 };
     var NODE_R = 19, CENTER_R = 30;
+    /* 궤도 링 — 저마다 다른 속도로 돌고, 링 위에 작은 달이 하나씩 함께 돈다 */
+    var RING_SPIN = { 1: 46, 2: 68, 3: 92 };
+    var MOON_FILL = { 1: '#C73E2C', 2: '#D99B26', 3: 'rgba(30,26,23,0.5)' };
     var rings = '';
     [3, 2, 1].forEach(function (k) {
-      rings += '<circle cx="' + cx + '" cy="' + cy + '" r="' + R[k] + '" fill="none" stroke="#1E1A17"' +
-        ' stroke-opacity="0.2" stroke-width="1.1" stroke-dasharray="1 6"/>';
+      rings += '<g class="orbit__rings orbit__rings--' + k + '" style="--spin:' + RING_SPIN[k] + 's">' +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + R[k] + '" fill="none" stroke="#1E1A17"' +
+        ' stroke-opacity="0.2" stroke-width="1.1" stroke-dasharray="1 6"/>' +
+        '<circle class="orbit__moon orbit__moon--' + k + '" cx="' + (cx + R[k]) + '" cy="' + cy + '" r="' + (k === 3 ? 1.8 : 2.4) + '"' +
+        ' fill="' + MOON_FILL[k] + '" stroke="#FBF6EA" stroke-width="0.8"/>' +
+        '</g>';
     });
 
     var dm = state.reading.chart.dayMaster;
@@ -1391,6 +1459,7 @@
     /* 내 중심 노드 — 팔자 고양이 얼굴 원형 아바타 */
     var defs = '<defs><clipPath id="orbit-face-me"><circle cx="' + cx + '" cy="' + cy + '" r="' + CENTER_R + '"/></clipPath></defs>';
     var center =
+      '<g class="orbit__me">' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + (CENTER_R + 5) + '" fill="' + (el === '금' ? '#EFEADD' : S.ELEM_SOFT[el]) + '"/>' +
       '<image href="' + faceSrc(myArt) + '" x="' + (cx - CENTER_R) + '" y="' + (cy - CENTER_R) + '"' +
       ' width="' + (CENTER_R * 2) + '" height="' + (CENTER_R * 2) + '" preserveAspectRatio="xMidYMid slice"' +
@@ -1398,7 +1467,8 @@
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + CENTER_R + '" fill="none" stroke="#1E1A17" stroke-width="2"/>' +
       '<circle cx="' + cx + '" cy="' + cy + '" r="' + (CENTER_R + 5) + '" fill="none" stroke="' + S.ELEM_INK[el] + '" stroke-opacity="0.55" stroke-width="1.2"/>' +
       '<text x="' + cx + '" y="' + (cy + CENTER_R + 22) + '" text-anchor="middle" font-family="\'Paperlogy\', sans-serif"' +
-      ' font-size="12" font-weight="700" fill="#1E1A17">' + C.orbit.centerSelf + ' · ' + dmHan + '</text>';
+      ' font-size="12" font-weight="700" fill="#1E1A17">' + C.orbit.centerSelf + ' · ' + dmHan + '</text>' +
+      '</g>';
 
     var nodes = '';
     [1, 2, 3].forEach(function (k) {
@@ -1416,7 +1486,7 @@
         var cid = 'orbit-face-' + String(d.f.id).replace(/[^a-zA-Z0-9_-]/g, '');
         defs += '<clipPath id="' + cid + '"><circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + NODE_R + '"/></clipPath>';
         nodes += '<g class="orbit__node orbit__node--' + k + on + (d.f.sample ? ' orbit__node--sample' : '') + '" data-friend-id="' + esc(d.f.id) + '"' +
-          ' tabindex="0" role="button" aria-label="' + sampleMark + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
+          ' style="--i:' + (k * 3 + i) + '" tabindex="0" role="button" aria-label="' + sampleMark + esc(d.f.name) + ' 님, ' + typeOf(d.compat).name + ' 관계">' +
           '<circle cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + (NODE_R + 8) + '" fill="transparent"/>' +
           '<circle class="orbit__node-ring" cx="' + nx.toFixed(1) + '" cy="' + ny.toFixed(1) + '" r="' + (NODE_R + 3) + '"/>' +
           '<image href="' + faceSrc(fArt) + '" x="' + (nx - NODE_R).toFixed(1) + '" y="' + (ny - NODE_R).toFixed(1) + '"' +
@@ -1430,7 +1500,8 @@
       });
     });
 
-    $('#orbit-svg').innerHTML = defs + rings + nodes + center;
+    var pulse = '<circle class="orbit__pulse" cx="' + cx + '" cy="' + cy + '" r="' + CENTER_R + '"/>';
+    $('#orbit-svg').innerHTML = defs + rings + pulse + nodes + center;
     $('#orbit-svg').setAttribute('aria-label',
       '나를 중심으로 한 인연 궤도. 1궤도 ' + byOrbit[1].length + '명, 2궤도 ' + byOrbit[2].length +
       '명, 3궤도 ' + byOrbit[3].length + '명.');
@@ -2291,13 +2362,46 @@
     inkBorder(ctx, h);
   }
 
-  function catBox(ctx, img, boxW, boxH, top, W) {
-    if (!img) return top + boxH;
-    var w0 = W || CW;
-    var sc = Math.min(boxW / img.width, boxH / img.height);
-    var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
-    ctx.drawImage(img, (w0 - w) / 2, top + boxH - h, w, h);
-    return top + boxH;
+  /* 일러스트를 한지로 번지게 — 네 가장자리를 지운 사본을 만들어 얹는다.
+     액자 대신 안개처럼 종이에 스며드는 그림이 된다.
+     anchor: 그림 높이에서 이 비율 지점을 가운데로 잡는다(고양이 얼굴이 사라지지 않게). */
+  function featheredArt(img, w, h, fx, fyTop, fyBottom, anchor) {
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w));
+    c.height = Math.max(1, Math.round(h));
+    var x = c.getContext('2d');
+    var sc = Math.max(w / img.width, h / img.height);
+    var iw = img.width * sc, ih = img.height * sc;
+    var a = anchor == null ? 1 : anchor;
+    var top = Math.min(0, Math.max(h - ih, -(a * ih - h / 2)));
+    x.drawImage(img, (w - iw) / 2, top, iw, ih);
+    x.globalCompositeOperation = 'destination-out';
+    var hx = Math.max(1, w * fx);
+    var hTop = Math.max(1, h * fyTop);
+    var hBot = Math.max(1, h * fyBottom);
+    var g;
+    g = x.createLinearGradient(0, 0, 0, hTop);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, w, hTop);
+    g = x.createLinearGradient(0, h, 0, h - hBot);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, h - hBot, w, hBot);
+    g = x.createLinearGradient(0, 0, hx, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, hx, h);
+    g = x.createLinearGradient(w, 0, w - hx, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(w - hx, 0, hx, h);
+    x.globalCompositeOperation = 'source-over';
+    return c;
   }
 
   /* ---------- 나만의 천기부적 (유료, 1080×1920) ---------- */
@@ -2334,7 +2438,15 @@
       ctx.fillStyle = INK2;
       fillSpaced(ctx, C.ui.arumulet.header, CW / 2, 208, 15, 'center', 34, 700);
 
-      var artBottom = catBox(ctx, img, 450, 360, 246);
+      if (img) {
+        ctx.save();
+        ctx.drawImage(featheredArt(img, CW, 400, 0.16, 0.22, 0.28, 0.76), 0, 244);
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = PAPER;
+        ctx.fillRect(0, 244, CW, 400);
+        ctx.restore();
+      }
+      var artBottom = 244 + 400 - 26;
 
       ctx.textAlign = 'left';
       ctx.fillStyle = S.ELEM_INK[elem];
@@ -2514,21 +2626,40 @@
       fillSpaced(ctx, C.brand.name, W / 2, sq ? 152 : 188, sq ? 4 : 5, 'center', sq ? 26 : 30, 700);
       plumDivider(ctx, W / 2, sq ? 184 : 224, sq ? 112 : 132);
 
-      /* 팔자 고양이 */
-      ctx.fillStyle = RED_D;
-      fillSpaced(ctx, C.FREE.catSeal + ' 고양이', W / 2, sq ? 218 : 274, 6, 'center', sq ? 21 : 24, 700);
-
-      var boxW = sq ? 430 : 620, boxH = sq ? 220 : 400;
+      /* 팔자 고양이 — 액자 없이 카드 폭 끝까지 번지고, 가장자리는 한지로 사라진다 */
       var artTop = sq ? 226 : 300;
-      var artBottom = catBox(ctx, img, boxW, boxH, artTop, W);
+      var artH = sq ? 282 : 560;
+      var artW = sq ? W : 940;
+      var artBottom = artTop + artH;
+      if (img) {
+        ctx.save();
+        ctx.drawImage(featheredArt(img, artW, artH, sq ? 0.12 : 0.10, sq ? 0.07 : 0.08, sq ? 0.28 : 0.22, sq ? 0.66 : 1),
+          (W - artW) / 2, artTop);
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = PAPER;
+        ctx.fillRect((W - artW) / 2, artTop, artW, artH);
+        ctx.restore();
+      }
 
-      /* 팔자 고양이 얼굴 원형 메달 — 일러스트 모서리에 겹쳐 놓는다 */
+      /* 그림 위에 얹히는 붉은 띠 — 화면과 같은 결 */
+      var kick = C.FREE.catSeal + ' 고양이';
+      var kickY = sq ? 268 : 352;
+      var kSize = sq ? 21 : 24;
+      ctx.font = '700 ' + kSize + 'px ' + F_SANS;
+      var kw = spacedWidth(ctx, kick, 6, kSize, 700);
+      ctx.save();
+      ctx.fillStyle = RED;
+      wobbleRectPath(ctx, 96, kickY - (sq ? 30 : 34), 96 + kw + 56, kickY + (sq ? 10 : 12), 2, 1.6);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#F7EFE0';
+      fillSpaced(ctx, kick, 96 + 28, kickY, 6, 'left', kSize, 700);
+
+      /* 팔자 고양이 얼굴 원형 메달 — 안개 진 자리에 살짝 겹친다 */
       if (face && img) {
         var medR = sq ? 44 : 60;
-        var imgSc = Math.min(boxW / img.width, boxH / img.height);
-        var shownW = img.width * imgSc;
-        var mx = W / 2 + shownW / 2 - medR * 0.55;
-        var my = artBottom - medR + (sq ? 2 : 6);
+        var mx = W - (sq ? 118 : 148);
+        var my = artBottom - (sq ? medR - 8 : medR - 4);
         ctx.save();
         ctx.beginPath(); ctx.arc(mx, my, medR + 7, 0, Math.PI * 2);
         ctx.fillStyle = PAPER_HI; ctx.fill();
@@ -2546,7 +2677,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = INK;
       ctx.font = (sq ? '800 76px ' : '800 92px ') + F_SANS;
-      ctx.fillText(p.name, W / 2, artBottom + (sq ? 80 : 94));
+      ctx.fillText(p.name, W / 2, artBottom + (sq ? 74 : 96));
 
       ctx.fillStyle = S.ELEM_INK[p.elem];
       fillSpaced(ctx, p.hanja + ' · ' + p.short, W / 2, artBottom + (sq ? 114 : 142), 5, 'center', sq ? 21 : 27, 700);
@@ -2591,10 +2722,12 @@
         ctx.fillText(bombLines[i], W / 2, bombTop + i * bombLh + (sq ? 18 : 21));
       }
 
-      /* 해시태그 */
+      /* 해시태그 — 스토리(인스타)에만. 1:1 카톡용은 아래 링크에 자리를 내준다 */
       var bandBottom = bandTop + bandH;
-      ctx.fillStyle = '#4E6349';
-      fillSpaced(ctx, p.tags.join('  '), W / 2, bandBottom + (sq ? 26 : 40), 1, 'center', sq ? 19 : 23, 700);
+      if (!sq) {
+        ctx.fillStyle = '#4E6349';
+        fillSpaced(ctx, p.tags.join('  '), W / 2, bandBottom + 40, 1, 'center', 23, 700);
+      }
 
       /* 오행 분포 띠 · 유형 근거 — 카드 아래 여백을 사실로 채운다 */
       var distY;
@@ -2608,13 +2741,7 @@
         drawMiniDist(ctx, r.chart.dist, W / 2, distY, 800, 24);
       }
 
-      /* 아래 - 유입 링크 */
-      var footRule = sq ? Math.max(H - 236, distY + 66) : Math.max(H - 420, distY + 190);
-      plumDivider(ctx, W / 2, footRule, sq ? 120 : 150);
-
-      ctx.fillStyle = INK;
-      fillSpaced(ctx, C.FREE.shareLinkLine, W / 2, footRule + (sq ? 36 : 58), 2, 'center', sq ? 26 : 31, 700);
-
+      /* 아래 - 유입 링크 (카드 바닥에서 위로 쌓아 겹치지 않게) */
       var link = shareLink();
       var shown = link.replace(/^https?:\/\//, '').replace(/\/$/, '');
       var maxLink = 2;
@@ -2632,15 +2759,25 @@
         linkLines = wrapChars(ctx, shown, maxW, maxLink);
       }
       lh = Math.round(linkSize * 1.4);
+
+      var noticeY = H - (sq ? 72 : 86);
+      var infoY = noticeY - (sq ? 32 : 40);
+      var linkLast = infoY - (sq ? 40 : 48);
+      var linkTop = linkLast - (linkLines.length - 1) * lh;
+      var labelY = linkTop - (sq ? 50 : 62);
+      var footRule = labelY - (sq ? 46 : 56);
+
+      plumDivider(ctx, W / 2, footRule, sq ? 120 : 150);
+
+      ctx.fillStyle = INK;
+      fillSpaced(ctx, C.FREE.shareLinkLine, W / 2, labelY, 2, 'center', sq ? 26 : 31, 700);
+
       ctx.fillStyle = INK2;
       ctx.font = '400 ' + linkSize + 'px ' + F_SANS;
-      var linkTop = footRule + (sq ? 60 : 104);
       for (i = 0; i < linkLines.length; i++) {
         ctx.fillText(linkLines[i], W / 2, linkTop + i * lh);
       }
 
-      var infoY = linkTop + (linkLines.length - 1) * lh + (sq ? 28 : 36);
-      infoY = Math.min(infoY, H - (sq ? 106 : 128));
       ctx.fillStyle = INK3;
       ctx.font = (sq ? '400 17px ' : '400 22px ') + F_SANS;
       ctx.fillText(
@@ -2649,8 +2786,8 @@
       );
 
       ctx.fillStyle = 'rgba(30,26,23,0.42)';
-      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, Math.min(infoY + (sq ? 28 : 34), H - (sq ? 70 : 58)),
-        2, 'center', sq ? 15 : 20, 400);
+      fillSpaced(ctx, C.ui.arumulet.notice, W / 2, noticeY, 2, 'center', sq ? 15 : 20, 400);
+      ctx.textAlign = 'left';
 
       state.shareReady = true;
     });
