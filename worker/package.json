@@ -1,0 +1,16 @@
+{
+  "name": "nyang-saju-worker",
+  "private": true,
+  "type": "module",
+  "description": "냥도사 결제·유료 본문 서버 (Cloudflare Worker + D1)",
+  "scripts": {
+    "test": "node --test test/",
+    "sync": "node tools/sync-engine.mjs && node tools/split-paid-copy.mjs --check",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute nyang-saju --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute nyang-saju --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

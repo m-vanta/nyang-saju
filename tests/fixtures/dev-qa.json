@@ -1,0 +1,473 @@
+{
+  "meta": {
+    "kind": "dev-qa",
+    "source": "handoffs/🔍-냥도사-구조적-품질-원인분석-및-개선안/analysis-report.md §6.2 재구성 매트릭스",
+    "note": "원본 QA가 발견되기 전에 분석 보고서가 재구성한 12건이다. 원본(tests/fixtures/qa-original.json)과 별도로 보존한다.",
+    "asOf": "2026-11-25T10:00:00+09:00",
+    "genderAssumption": "여성"
+  },
+  "profiles": [
+    {
+      "id": "DEV-QA01",
+      "input": {
+        "year": 1990,
+        "month": 1,
+        "day": 15,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "乙巳/丙午 분할 재현(입춘 전 출생)",
+      "expected": {
+        "dayMaster": "경금",
+        "pillars": [
+          "기사",
+          "정축",
+          "경진",
+          "임오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 3,
+          "토": 3,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "seun": "병오",
+        "daewoon": "신사",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "편관"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA02",
+      "input": {
+        "year": 1988,
+        "month": 2,
+        "day": 2,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "乙巳/丙午 분할 재현(입춘 전 출생)",
+      "expected": {
+        "dayMaster": "정화",
+        "pillars": [
+          "정묘",
+          "계축",
+          "정해",
+          "병오"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 4,
+          "토": 1,
+          "금": 0,
+          "수": 2
+        },
+        "tiedMax": [
+          "화"
+        ],
+        "seun": "병오",
+        "daewoon": "정사",
+        "daewoonTen": {
+          "stem": "비견",
+          "branch": "겁재"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA03",
+      "input": {
+        "year": 1992,
+        "month": 1,
+        "day": 5,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "乙巳/丙午 분할 재현(입춘 전 출생)",
+      "expected": {
+        "dayMaster": "경금",
+        "pillars": [
+          "신미",
+          "경자",
+          "경진",
+          "임오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 1,
+          "토": 2,
+          "금": 3,
+          "수": 2
+        },
+        "tiedMax": [
+          "금"
+        ],
+        "seun": "병오",
+        "daewoon": "갑진",
+        "daewoonTen": {
+          "stem": "편재",
+          "branch": "편인"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA04",
+      "input": {
+        "year": 1985,
+        "month": 2,
+        "day": 3,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "乙巳/丙午 분할 재현(입춘 전 출생)",
+      "expected": {
+        "dayMaster": "계수",
+        "pillars": [
+          "갑자",
+          "정축",
+          "계유",
+          "무오"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 2,
+          "토": 2,
+          "금": 1,
+          "수": 2
+        },
+        "tiedMax": [
+          "화",
+          "토",
+          "수"
+        ],
+        "seun": "병오",
+        "daewoon": "계유",
+        "daewoonTen": {
+          "stem": "비견",
+          "branch": "편인"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA05",
+      "input": {
+        "year": 1990,
+        "month": 5,
+        "day": 15,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "입춘 후 기준값",
+      "expected": {
+        "dayMaster": "경금",
+        "pillars": [
+          "경오",
+          "신사",
+          "경진",
+          "임오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 3,
+          "토": 1,
+          "금": 3,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "금"
+        ],
+        "seun": "병오",
+        "daewoon": "정축",
+        "daewoonTen": {
+          "stem": "정관",
+          "branch": "정인"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA06",
+      "input": {
+        "year": 1986,
+        "month": 9,
+        "day": 9,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "대운 천간 癸·지지 巳 상이 사례",
+      "expected": {
+        "dayMaster": "병화",
+        "pillars": [
+          "병인",
+          "정유",
+          "병진",
+          "갑오"
+        ],
+        "counts": {
+          "목": 2,
+          "화": 4,
+          "토": 1,
+          "금": 1,
+          "수": 0
+        },
+        "tiedMax": [
+          "화"
+        ],
+        "seun": "병오",
+        "daewoon": "계사",
+        "daewoonTen": {
+          "stem": "정관",
+          "branch": "비견"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA07",
+      "input": {
+        "year": 1961,
+        "month": 4,
+        "day": 14,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "火3·土3 동률 사례",
+      "expected": {
+        "dayMaster": "정화",
+        "pillars": [
+          "신축",
+          "임진",
+          "정축",
+          "병오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 3,
+          "토": 3,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "seun": "병오",
+        "daewoon": "무술",
+        "daewoonTen": {
+          "stem": "상관",
+          "branch": "상관"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA08",
+      "input": {
+        "year": 1961,
+        "month": 4,
+        "day": 14,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "QA07과 동일 입력(결정성 확인)",
+      "expected": {
+        "dayMaster": "정화",
+        "pillars": [
+          "신축",
+          "임진",
+          "정축",
+          "병오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 3,
+          "토": 3,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "seun": "병오",
+        "daewoon": "무술",
+        "daewoonTen": {
+          "stem": "상관",
+          "branch": "상관"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA09",
+      "input": {
+        "year": 1990,
+        "month": 5,
+        "day": 15,
+        "calendar": "solar",
+        "hourIdx": null,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "출생시간 미상(6글자)",
+      "expected": {
+        "dayMaster": "경금",
+        "pillars": [
+          "경오",
+          "신사",
+          "경진"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 2,
+          "토": 1,
+          "금": 3,
+          "수": 0
+        },
+        "tiedMax": [
+          "금"
+        ],
+        "seun": "병오",
+        "daewoon": "정축",
+        "daewoonTen": {
+          "stem": "정관",
+          "branch": "정인"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA10",
+      "input": {
+        "year": 1990,
+        "month": 5,
+        "day": 15,
+        "calendar": "lunar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "음력 1990-05-15 = 양력 1990-06-07과 같은 명식",
+      "expected": {
+        "dayMaster": "계수",
+        "pillars": [
+          "경오",
+          "임오",
+          "계묘",
+          "무오"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 3,
+          "토": 1,
+          "금": 1,
+          "수": 2
+        },
+        "tiedMax": [
+          "화"
+        ],
+        "seun": "병오",
+        "daewoon": "무인",
+        "daewoonTen": {
+          "stem": "정관",
+          "branch": "상관"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA11",
+      "input": {
+        "year": 1986,
+        "month": 9,
+        "day": 9,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "money"
+      },
+      "note": "QA06과 동일, 관심운세만 재물",
+      "expected": {
+        "dayMaster": "병화",
+        "pillars": [
+          "병인",
+          "정유",
+          "병진",
+          "갑오"
+        ],
+        "counts": {
+          "목": 2,
+          "화": 4,
+          "토": 1,
+          "금": 1,
+          "수": 0
+        },
+        "tiedMax": [
+          "화"
+        ],
+        "seun": "병오",
+        "daewoon": "계사",
+        "daewoonTen": {
+          "stem": "정관",
+          "branch": "비견"
+        }
+      }
+    },
+    {
+      "id": "DEV-QA12",
+      "input": {
+        "year": 1961,
+        "month": 5,
+        "day": 25,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "note": "火3·土3 동률 사례 2",
+      "expected": {
+        "dayMaster": "무토",
+        "pillars": [
+          "신축",
+          "계사",
+          "무오",
+          "무오"
+        ],
+        "counts": {
+          "목": 0,
+          "화": 3,
+          "토": 3,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "seun": "병오",
+        "daewoon": "경자",
+        "daewoonTen": {
+          "stem": "식신",
+          "branch": "정재"
+        }
+      }
+    }
+  ]
+}

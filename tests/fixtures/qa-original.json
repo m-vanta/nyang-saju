@@ -1,0 +1,698 @@
+{
+  "meta": {
+    "kind": "qa-original",
+    "extractedFrom": "apps/nyang-saju/qa-original/*-free.txt·*-detail.txt·*-orbit*.txt·*-share.txt",
+    "asOf": "2026-11-25T10:00:00+09:00",
+    "note": "원본 QA 스크린샷의 화면 텍스트에서 이름·생년월일·시진·관심운세와 관측값을 옮겼다. 성별은 화면에 없어 앱 기본값(여성)으로 두었다 — 대운 순역에만 영향.",
+    "genderAssumption": "여성(화면 미표시, 앱 기본값)"
+  },
+  "profiles": [
+    {
+      "id": "QA01",
+      "source": "qa-original/QA01-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2000,
+        "month": 1,
+        "day": 1,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "태산냥",
+        "dayMaster": "무토",
+        "countsText": "불 3개(38%)",
+        "tenText": "정인 2 · 비견 1 · 겁재 1",
+        "bomb": "여덟 글자에 쇠 기운이 하나도 없어요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "무토",
+        "pillars": [
+          "기묘",
+          "병자",
+          "무오",
+          "무오"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 3,
+          "토": 3,
+          "금": 0,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "ten": "정인 2 · 비견 1 · 겁재 1 · 정재 1 · 정관 1 · 편인 1",
+        "seun": "병오",
+        "daewoon": "기묘",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정관"
+        }
+      },
+      "defects": [
+        {
+          "code": "ELEM-TIE"
+        },
+        {
+          "code": "여덟 글자 중 불 3·흙 3 동률인데 불만 단독 최강(38%)으로 서술"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA02",
+      "source": "qa-original/QA02-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2000,
+        "month": 1,
+        "day": 1,
+        "calendar": "solar",
+        "hourIdx": null,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "태산냥",
+        "dayMaster": "무토",
+        "countsText": "불 2개(33%)",
+        "tenText": "겁재 1 · 정재 1 · 정관 1",
+        "bomb": "불 기운이 33%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": true
+        }
+      },
+      "expected": {
+        "dayMaster": "무토",
+        "pillars": [
+          "기묘",
+          "병자",
+          "무오"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 2,
+          "토": 2,
+          "금": 0,
+          "수": 1
+        },
+        "tiedMax": [
+          "화",
+          "토"
+        ],
+        "ten": "겁재 1 · 정재 1 · 정관 1 · 편인 1 · 정인 1",
+        "seun": "병오",
+        "daewoon": "기묘",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정관"
+        }
+      },
+      "defects": [
+        {
+          "code": "ELEM-TIE"
+        },
+        {
+          "code": "불 2·흙 2 동률인데 불만 33%로 서술"
+        }
+      ],
+      "notes": "출생시간 미상 — 시주 없이 6글자, 연·월주는 정오 기준"
+    },
+    {
+      "id": "QA03",
+      "source": "qa-original/QA03-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2000,
+        "month": 1,
+        "day": 1,
+        "calendar": "solar",
+        "hourIdx": 0,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "태산냥",
+        "dayMaster": "무토",
+        "countsText": "물 3개(38%)",
+        "tenText": "정재 2 · 겁재 1 · 편재 1",
+        "bomb": "여덟 글자에 쇠 기운이 하나도 없어요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "무토",
+        "pillars": [
+          "기묘",
+          "병자",
+          "무오",
+          "임자"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 2,
+          "토": 2,
+          "금": 0,
+          "수": 3
+        },
+        "tiedMax": [
+          "수"
+        ],
+        "ten": "정재 2 · 겁재 1 · 편재 1 · 정관 1 · 편인 1 · 정인 1",
+        "seun": "병오",
+        "daewoon": "기묘",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정관"
+        }
+      },
+      "defects": [],
+      "notes": "자시 — 자정 전/후 구분 필요"
+    },
+    {
+      "id": "QA04",
+      "source": "qa-original/QA04-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2024,
+        "month": 2,
+        "day": 3,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "촛불냥",
+        "dayMaster": "정화",
+        "countsText": "불 3개(38%)",
+        "tenText": "편인 2 · 비견 1 · 겁재 1",
+        "bomb": "불 기운이 38%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "정화",
+        "pillars": [
+          "계묘",
+          "을축",
+          "정유",
+          "병오"
+        ],
+        "counts": {
+          "목": 2,
+          "화": 3,
+          "토": 1,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "화"
+        ],
+        "ten": "편인 2 · 비견 1 · 겁재 1 · 식신 1 · 편재 1 · 편관 1",
+        "seun": "병오",
+        "daewoon": "병인",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정인"
+        }
+      },
+      "defects": [],
+      "notes": ""
+    },
+    {
+      "id": "QA05",
+      "source": "qa-original/QA05-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2024,
+        "month": 2,
+        "day": 5,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "정원냥",
+        "dayMaster": "기토",
+        "countsText": "나무 2개(25%)",
+        "tenText": "정관 2 · 겁재 1 · 상관 1",
+        "bomb": "나무 기운이 25%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "기토",
+        "pillars": [
+          "갑진",
+          "병인",
+          "기해",
+          "경오"
+        ],
+        "counts": {
+          "목": 2,
+          "화": 2,
+          "토": 2,
+          "금": 1,
+          "수": 1
+        },
+        "tiedMax": [
+          "목",
+          "화",
+          "토"
+        ],
+        "ten": "정관 2 · 겁재 1 · 상관 1 · 정재 1 · 편인 1 · 정인 1",
+        "seun": "병오",
+        "daewoon": "을축",
+        "daewoonTen": {
+          "stem": "편관",
+          "branch": "비견"
+        }
+      },
+      "defects": [
+        {
+          "code": "ELEM-TIE"
+        },
+        {
+          "code": "나무2·불2·흙2 3중 동률인데 나무만 최강으로 서술"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA06",
+      "source": "qa-original/QA06-free.txt·detail.txt",
+      "focus": "money",
+      "input": {
+        "year": 1996,
+        "month": 2,
+        "day": 29,
+        "calendar": "solar",
+        "hourIdx": 4,
+        "gender": "여성",
+        "focus": "money"
+      },
+      "observed": {
+        "cat": "태양냥",
+        "dayMaster": "병화",
+        "countsText": "불 2개(25%)",
+        "tenText": "편재 2 · 비견 1 · 식신 1",
+        "bomb": "불 기운이 25%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "병화",
+        "pillars": [
+          "병자",
+          "경인",
+          "병신",
+          "임진"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 2,
+          "토": 1,
+          "금": 2,
+          "수": 2
+        },
+        "tiedMax": [
+          "화",
+          "금",
+          "수"
+        ],
+        "ten": "편재 2 · 비견 1 · 식신 1 · 편관 1 · 정관 1 · 편인 1",
+        "seun": "병오",
+        "daewoon": "정해",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "편관"
+        }
+      },
+      "defects": [
+        {
+          "code": "ELEM-TIE"
+        },
+        {
+          "code": "불2·쇠2·물2 3중 동률인데 불만 25%로 서술"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA07",
+      "source": "qa-original/QA07-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2024,
+        "month": 1,
+        "day": 1,
+        "calendar": "lunar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "대장냥",
+        "dayMaster": "갑목",
+        "countsText": "나무 3개(38%)",
+        "tenText": "비견 2 · 편재 2 · 식신 1",
+        "bomb": "여덟 글자에 물 기운이 하나도 없어요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "갑목",
+        "pillars": [
+          "갑진",
+          "병인",
+          "갑진",
+          "경오"
+        ],
+        "counts": {
+          "목": 3,
+          "화": 2,
+          "토": 2,
+          "금": 1,
+          "수": 0
+        },
+        "tiedMax": [
+          "목"
+        ],
+        "ten": "비견 2 · 편재 2 · 식신 1 · 상관 1 · 편관 1",
+        "seun": "병오",
+        "daewoon": "을축",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정재"
+        }
+      },
+      "defects": [
+        {
+          "code": "SAME-CHART-DIFF-TEXT"
+        },
+        {
+          "code": "QA08과 같은 명식(양력 2024-02-10)인데 팩폭 문장이 다름 — 이름이 문장 선택 씨드에 들어감"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA08",
+      "source": "qa-original/QA08-free.txt·detail.txt",
+      "focus": "love",
+      "input": {
+        "year": 2024,
+        "month": 2,
+        "day": 10,
+        "calendar": "solar",
+        "hourIdx": 6,
+        "gender": "여성",
+        "focus": "love"
+      },
+      "observed": {
+        "cat": "대장냥",
+        "dayMaster": "갑목",
+        "countsText": "나무 3개(38%)",
+        "tenText": "비견 2 · 편재 2 · 식신 1",
+        "bomb": "비견이 2개 붙어 있어요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "갑목",
+        "pillars": [
+          "갑진",
+          "병인",
+          "갑진",
+          "경오"
+        ],
+        "counts": {
+          "목": 3,
+          "화": 2,
+          "토": 2,
+          "금": 1,
+          "수": 0
+        },
+        "tiedMax": [
+          "목"
+        ],
+        "ten": "비견 2 · 편재 2 · 식신 1 · 상관 1 · 편관 1",
+        "seun": "병오",
+        "daewoon": "을축",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "정재"
+        }
+      },
+      "defects": [
+        {
+          "code": "SAME-CHART-DIFF-TEXT"
+        },
+        {
+          "code": "QA07과 같은 명식인데 팩폭 문장이 다름 — 이름이 문장 선택 씨드에 들어감"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA09",
+      "source": "qa-original/QA09-free.txt·detail.txt",
+      "focus": "work",
+      "input": {
+        "year": 1988,
+        "month": 8,
+        "day": 8,
+        "calendar": "solar",
+        "hourIdx": 11,
+        "gender": "여성",
+        "focus": "work"
+      },
+      "observed": {
+        "cat": "눈치냥",
+        "dayMaster": "을목",
+        "countsText": "흙 3개(38%)",
+        "tenText": "정재 2 · 정관 2 · 식신 1",
+        "bomb": "흙 기운이 38%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "을목",
+        "pillars": [
+          "무진",
+          "경신",
+          "을미",
+          "정해"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 1,
+          "토": 3,
+          "금": 2,
+          "수": 1
+        },
+        "tiedMax": [
+          "토"
+        ],
+        "ten": "정재 2 · 정관 2 · 식신 1 · 편재 1 · 정인 1",
+        "seun": "병오",
+        "daewoon": "병진",
+        "daewoonTen": {
+          "stem": "상관",
+          "branch": "정재"
+        }
+      },
+      "defects": [],
+      "notes": ""
+    },
+    {
+      "id": "QA10",
+      "source": "qa-original/QA10-free.txt·detail.txt·orbit.txt",
+      "focus": "year",
+      "input": {
+        "year": 1975,
+        "month": 12,
+        "day": 31,
+        "calendar": "solar",
+        "hourIdx": 3,
+        "gender": "여성",
+        "focus": "year"
+      },
+      "observed": {
+        "cat": "보석냥",
+        "dayMaster": "신금",
+        "countsText": "나무 3개(38%)",
+        "tenText": "편재 3 · 비견 1 · 식신 1",
+        "bomb": "여덟 글자에 불 기운이 하나도 없어요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "신금",
+        "pillars": [
+          "을묘",
+          "무자",
+          "신해",
+          "신묘"
+        ],
+        "counts": {
+          "목": 3,
+          "화": 0,
+          "토": 1,
+          "금": 2,
+          "수": 2
+        },
+        "tiedMax": [
+          "목"
+        ],
+        "ten": "편재 3 · 비견 1 · 식신 1 · 상관 1 · 정인 1",
+        "seun": "병오",
+        "daewoon": "계사",
+        "daewoonTen": {
+          "stem": "식신",
+          "branch": "정관"
+        }
+      },
+      "defects": [],
+      "notes": ""
+    },
+    {
+      "id": "QA11",
+      "source": "qa-original/QA11-free.txt·detail.txt",
+      "focus": "year",
+      "input": {
+        "year": 2001,
+        "month": 5,
+        "day": 16,
+        "calendar": "solar",
+        "hourIdx": 8,
+        "gender": "여성",
+        "focus": "year"
+      },
+      "observed": {
+        "cat": "정원냥",
+        "dayMaster": "기토",
+        "countsText": "불 2개(25%)",
+        "tenText": "정인 2 · 식신 1 · 상관 1",
+        "bomb": "불 기운이 25%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "기토",
+        "pillars": [
+          "신사",
+          "계사",
+          "기묘",
+          "임신"
+        ],
+        "counts": {
+          "목": 1,
+          "화": 2,
+          "토": 1,
+          "금": 2,
+          "수": 2
+        },
+        "tiedMax": [
+          "화",
+          "금",
+          "수"
+        ],
+        "ten": "정인 2 · 식신 1 · 상관 1 · 편재 1 · 정재 1 · 편관 1",
+        "seun": "병오",
+        "daewoon": "을미",
+        "daewoonTen": {
+          "stem": "편관",
+          "branch": "비견"
+        }
+      },
+      "defects": [
+        {
+          "code": "ELEM-TIE"
+        },
+        {
+          "code": "불2·쇠2·물2 3중 동률인데 불만 25%로 서술"
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "id": "QA12",
+      "source": "qa-original/QA12-free.txt·detail.txt·share.txt",
+      "focus": "money",
+      "input": {
+        "year": 1999,
+        "month": 9,
+        "day": 9,
+        "calendar": "solar",
+        "hourIdx": 9,
+        "gender": "여성",
+        "focus": "money"
+      },
+      "observed": {
+        "cat": "대장냥",
+        "dayMaster": "갑목",
+        "countsText": "물 3개(38%)",
+        "tenText": "정인 3 · 정관 2 · 겁재 1",
+        "bomb": "물 기운이 38%예요. …",
+        "labels": {
+          "usedEightCharsEvenIfNoHour": false
+        }
+      },
+      "expected": {
+        "dayMaster": "갑목",
+        "pillars": [
+          "기묘",
+          "계유",
+          "갑자",
+          "계유"
+        ],
+        "counts": {
+          "목": 2,
+          "화": 0,
+          "토": 1,
+          "금": 2,
+          "수": 3
+        },
+        "tiedMax": [
+          "수"
+        ],
+        "ten": "정인 3 · 정관 2 · 겁재 1 · 정재 1",
+        "seun": "병오",
+        "daewoon": "을해",
+        "daewoonTen": {
+          "stem": "겁재",
+          "branch": "편인"
+        }
+      },
+      "defects": [
+        {
+          "code": "SHARE-PII"
+        },
+        {
+          "code": "공유 링크/카드에 닉네임·생년월일·시간대·성별·달력이 그대로 들어감"
+        }
+      ],
+      "notes": ""
+    }
+  ]
+}

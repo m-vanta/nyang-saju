@@ -1,0 +1,36 @@
+# 냥도사 결제·유료 본문 Worker (Cloudflare Workers + D1)
+# 배포: 이 폴더(worker/)에서 `npx wrangler deploy`
+# 시크릿은 절대 이 파일에 쓰지 않는다 (git에 남는다) → `wrangler secret put`
+
+name = "nyang-saju-api"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# 유료 본문은 절대 캐시되지 않게 한다 (Worker가 직접 Cache-Control: no-store를 붙인다)
+workers_dev = true
+
+[vars]
+# 화면에 쓰는 값 (비밀 아님)
+SHOP_NAME = "냥도사의 천기누설"
+GOODNAME = "냥도사의 천기누설 전체 풀이"
+# 결제 후 돌아올 프런트 주소. 배포 도메인으로 바꾼다.
+RETURN_URL = "https://m-vanta.github.io/nyang-saju/"
+# CORS 허용 오리진 (쉼표 구분). Cloudflare Pages로 옮기면 그 주소를 추가한다.
+ALLOWED_ORIGINS = "https://m-vanta.github.io,https://nyang-saju.pages.dev"
+# 실결제 스위치. "off"면 /api/order가 503 payapp_disabled를 돌려주고
+# 어떤 결제도 요청하지 않는다. 민지님이 준비되면 "on"으로 바꾼다.
+PAYMENTS = "off"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nyang-saju"
+# `wrangler d1 create nyang-saju` 결과의 database_id를 넣는다
+database_id = "<D1_DATABASE_ID>"
+
+# secrets (wrangler secret put <이름>)
+#   PAYAPP_USERID     페이앱 가맹점 아이디
+#   PAYAPP_LINKKEY    연동 KEY  (취소 API·웹훅 검증)
+#   PAYAPP_LINKVAL    연동 VALUE(웹훅 검증)
+#   PAYAPP_REQUESTKEY 결제 KEY  (API hash 계산)
+#   TOKEN_SECRET      열람 토큰 서명 키 (32바이트 랜덤)
+#   ADMIN_TOKEN       취소/환불 관리 호출 키
