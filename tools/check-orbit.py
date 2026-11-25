@@ -301,6 +301,14 @@ def main():
         expect("준비 중: 클릭은 안내 토스트", "준비 중" in toast and "못했" not in toast, toast[:60])
         expect("준비 중: 공유 코드 요청 0건 · 콘솔 에러 0건", Quiet.share_posts == posts_before and not perrs,
                f"posts={Quiet.share_posts - posts_before} errs={perrs[:2]}")
+
+        # 예전 개인정보 링크 안내는 Worker 와 상관없이 늘 나와야 한다
+        pg2 = plain.new_page()
+        pg2.goto(BASE + "?inviter=민지&iy=1995&im=4&id=12&ih=6&ic=solar&ig=f", wait_until="networkidle")
+        pg2.wait_for_timeout(400)
+        old = pg2.inner_text("#invite-banner") if pg2.is_visible("#invite-banner") else ""
+        expect("준비 중에도 예전 개인정보 링크 안내", "예전" in old and "개인정보" in old, old[:60])
+        pg2.close()
         plain.close()
         browser.close()
 

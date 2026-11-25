@@ -1510,13 +1510,15 @@
 
   /* /r/{code} 또는 ?r={code} 로 들어온 경우 — 이름·생년월일 없이 일간·일지만 받는다 */
   function parseInvite() {
-    // Worker 가 배포되기 전에는 코드 조회를 시도하지 않는다(서버 없음이 콘솔 오류로 남지 않게)
-    if (!inviteReady()) return;
+    // Worker 가 배포되기 전에는 코드 조회를 시도하지 않는다(서버 없음이 콘솔 오류로 남지 않게).
+    // 예전 ?inviter= 안내는 Worker 와 상관없이 늘 보여 준다.
     var code = null;
-    var m = location.pathname.match(/\/r\/([A-Za-z0-9_-]{6,})/);
-    if (m) code = m[1];
-    if (!code) {
-      try { code = new URLSearchParams(location.search).get('r'); } catch (e) { code = null; }
+    if (inviteReady()) {
+      var m = location.pathname.match(/\/r\/([A-Za-z0-9_-]{6,})/);
+      if (m) code = m[1];
+      if (!code) {
+        try { code = new URLSearchParams(location.search).get('r'); } catch (e) { code = null; }
+      }
     }
     if (code) {
       fetch(apiBase().replace(/\/$/, '') + '/r/' + encodeURIComponent(code)).then(function (res) {

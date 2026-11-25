@@ -371,8 +371,10 @@ check('INVITE', '친구 초대는 Worker 배포 전 기본 닫힘 · 개인정�
   const copyInvite = app.slice(app.indexOf('function copyInvite'), app.indexOf('function trackInvite'));
   assert(/if \(!inviteReady\(\)\)/.test(copyInvite), '초대 복사에 준비 중 가드 없음');
   assert(!/location\.search|inviter=|iy=/.test(copyInvite), '초대에 개인정보 URL 폴백');
-  assert(/if \(!inviteReady\(\)\) return;/.test(app.slice(app.indexOf('function parseInvite'), app.indexOf('function parseInvite') + 400)),
-    '준비 중에 코드 조회를 막지 않음');
+  const parse = app.slice(app.indexOf('function parseInvite'), app.indexOf('/* --- 친구 추가 폼'));
+  assert(/if \(inviteReady\(\)\) \{/.test(parse), '준비 중에 코드 조회를 막지 않음');
+  assert(!/if \(!inviteReady\(\)\) return;/.test(parse), '준비 중에 예전 링크 안내까지 막음');
+  assert(parse.lastIndexOf('예전 ?inviter=') > parse.indexOf('if (code) {'), '예전 링크 안내가 코드 조회 안에 갇힘');
   return '기본 준비 중 · 링크 조회 안 함';
 });
 
