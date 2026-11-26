@@ -103,7 +103,7 @@ node tests/ai-compare/run.mjs --mode score --in out/<runId>
 | 戊土 `wu-mountain` | 태산냥 | 능선 바위 위를 옆태로 걷기(꼬리 세움) |
 | 己土 `ji-field` | 정원냥 | 배추 이랑에 식빵 굽고 고개 갸웃 |
 | 庚金 `geng-rock` | 칼날냥 | 절벽에 앞발 짚고 서서 고개 돌리기 |
-| 辛金 `xin-gem` | 보석냥 | 보석을 두 앞발로 감싸 쥐기 |
+| 辛金 `xin-gem` | 보석냥 | 보석을 끌어안고 배를 깔고 늘어지기 |
 | 壬水 `ren-sea` | 바다냥 | 부서지는 파도 앞을 폴짝 뛰어넘기 |
 | 癸水 `gui-mist` | 안개냥 | 안개비 속을 걷다 뒤돌아보기 |
 
