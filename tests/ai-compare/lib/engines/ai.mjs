@@ -1,66 +1,111 @@
 /* ==========================================================================
-   lib/engines/ai.mjs — 실호출 엔진 (설계만, 이 저장소에서는 키가 없다)
+   lib/engines/ai.mjs — 실호출 엔진 (Anthropic Messages API)
    --------------------------------------------------------------------------
-   docs/orbit-finding-and-ai-hybrid-design.md §6 을 그대로 따른다.
-   · 입력은 analysisData + findings + policy 뿐. 이름·생년월일·성별은 보내지 않는다.
-   · 출력은 근거 id 를 인용한 문단 JSON. 검증기(G1~G12)를 통과해야 화면에 나간다.
-   · 실패하면 규칙 출력으로 폴백한다(run.mjs).
-
-   실호출은 서버(worker)에서만 한다. 이 파일은 하네스가 '어떤 계약으로 부를지'를
-   고정해 두는 자리이고, 키가 없으면 명확히 실패한다.
+   · 키는 환경변수 ANTHROPIC_API_KEY 또는 저장소 밖 로컬 .env.local 에서만 읽는다.
+     코드·로그·산출물에 키를 남기지 않는다(블라인드 패키지에도 안 들어간다).
+   · 이 저장소의 실험 실행은 --mode pilot / --mode full 에서만 이 파일을 부른다.
+     --mode stub 과 그 자기시험은 네트워크를 쓰지 않는다.
+   · 반환: { doc, usage, ms, model, rawText }
    ========================================================================== */
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { DEFAULT_MODEL } from '../cost.mjs';
+import { buildPrompt } from '../prompts.mjs';
 
-export const SYSTEM_PROMPT = [
-  "너는 '냥도사'의 해석 엔진이다. 너는 명리 계산기가 아니라, 이미 계산된 판정을 읽어 주는 역할만 한다.",
-  '[절대 규칙]',
-  '1. 명식을 계산하지 않는다. analysisData 에 없는 간지 조합을 쓰지 않는다.',
-  '2. 없는 판정을 만들지 않는다. findings 에 없는 격국·신강신약·용신·신살·궁합 점수를 말하지 않는다.',
-  '3. 문단마다 근거를 단다. 모든 문단은 findingRefs 에 실제 findings.id 를 1개 이상 가진다.',
-  '4. 수위를 바꾸지 않는다. polarity 가 neutral 인 판정을 긍정이나 부정으로 바꾸지 않는다.',
-  '5. 상충하면 둘 다 말한다.',
-  '6. 숫자를 만들지 않는다.',
-  '7. 단정하지 않는다. 미래를 확정하지 않고 경향과 조건으로 말한다.',
-  '8. 의료·법률·투자·생사를 판정하지 않는다.',
-  "9. 호칭은 {name} 님. '당신'을 쓰지 않는다. '~냥'은 전체 2회 이하.",
-  '10. 이름·생년월일·성별·지역을 출력에 쓰지 않는다.',
-  '11. JSON 만 출력한다.',
-  '12. 근거가 없으면 비워 둔다.'
-].join('\n');
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01';
+export const MAX_TOKENS = 8000;
 
-export function buildRequest(ctx, policy) {
-  return {
-    model: process.env.NYANG_COMPARE_MODEL || null,
-    temperature: 0,
-    system: SYSTEM_PROMPT,
-    input: {
-      analysisData: ctx.analysis,
-      findings: ctx.findings.map((f) => ({ id: f.id, claim: f.claim, display: f.display, polarity: f.polarity, evidence: f.evidence })),
-      policy
-    }
-  };
+/* .env.local — KEY=VALUE 줄만 읽는다. 없으면 환경변수만 쓴다. */
+export function loadEnvLocal(dir) {
+  const path = resolve(dir || process.cwd(), '.env.local');
+  const out = {};
+  if (!existsSync(path)) return out;
+  readFileSync(path, 'utf8').split('\n').forEach((line) => {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (!m) return;
+    out[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  });
+  return out;
 }
 
-export async function aiDoc(ctx, policy) {
-  if (!process.env.NYANG_COMPARE_API_KEY) {
-    const err = new Error('실호출에는 NYANG_COMPARE_API_KEY 가 필요합니다. 오프라인 비교는 --mode stub 을 쓰세요.');
+export function apiKey(dir) {
+  return process.env.ANTHROPIC_API_KEY || loadEnvLocal(dir).ANTHROPIC_API_KEY || null;
+}
+
+export function modelId() {
+  return process.env.NYANG_COMPARE_MODEL || DEFAULT_MODEL;
+}
+
+function parseJsonLoose(text) {
+  const t = String(text || '').trim();
+  const fenced = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fenced ? fenced[1] : t;
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('응답에서 JSON 을 찾지 못했습니다.');
+  return JSON.parse(body.slice(start, end + 1));
+}
+
+/**
+ * 한 번 호출한다. 검증·재시도는 lib/retry.mjs 가 맡는다.
+ * @param {object} p { system, user, model, maxTokens, temperature, key }
+ */
+export async function callModel(p) {
+  if (!p.key) {
+    const err = new Error('ANTHROPIC_API_KEY 가 없습니다. 실험 실행에는 키가 필요합니다(오프라인은 --mode stub).');
     err.code = 'NO_API_KEY';
     throw err;
   }
-  /* 실제 호출은 worker 경유로만 한다(키를 클라이언트에 두지 않는다). */
-  const req = buildRequest(ctx, policy);
-  const url = process.env.NYANG_COMPARE_ENDPOINT;
-  if (!url) {
-    const err = new Error('NYANG_COMPARE_ENDPOINT(worker /api/compare) 가 필요합니다.');
-    err.code = 'NO_ENDPOINT';
+  const t0 = Date.now();
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': p.key,
+      'anthropic-version': ANTHROPIC_VERSION
+    },
+    body: JSON.stringify({
+      model: p.model || modelId(),
+      max_tokens: p.maxTokens || MAX_TOKENS,
+      temperature: p.temperature === undefined ? 0 : p.temperature,
+      system: p.system,
+      messages: [{ role: 'user', content: p.user }]
+    })
+  });
+  const ms = Date.now() - t0;
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error('모델 호출 실패: HTTP ' + res.status + ' — ' + text.slice(0, 300));
+    err.code = 'HTTP_' + res.status;
     throw err;
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.NYANG_COMPARE_API_KEY },
-    body: JSON.stringify(req)
+  let body;
+  try { body = JSON.parse(text); } catch (e) { throw new Error('응답 본문이 JSON 이 아닙니다.'); }
+  const rawText = (body.content || []).map((c) => (c.type === 'text' ? c.text : '')).join('');
+  return { rawText, usage: body.usage || {}, ms, model: body.model || p.model || modelId() };
+}
+
+/**
+ * 실험군 1건 실행. 프롬프트는 lib/prompts.mjs 가 만든다.
+ * @param {string} arm 'B'|'C'|'D'|'E'
+ * @param {object} ctx buildContext 결과
+ * @param {object} o { pool, draftDoc, feedback, key, dir, temperature }
+ */
+export async function aiDoc(arm, ctx, o) {
+  const opt = o || {};
+  const prompt = buildPrompt(arm, ctx, { pool: opt.pool, draftDoc: opt.draftDoc });
+  const user = opt.feedback && opt.feedback.length
+    ? prompt.user + '\n\n[이전 시도에서 검증기가 반려한 항목 — 모두 고쳐서 다시 써라]\n' + opt.feedback.join('\n')
+    : prompt.user;
+  const r = await callModel({
+    system: prompt.system,
+    user,
+    key: opt.key || apiKey(opt.dir),
+    temperature: opt.temperature === undefined ? 0 : opt.temperature
   });
-  if (!res.ok) throw new Error('AI 호출 실패: HTTP ' + res.status);
-  const doc = await res.json();
-  doc.engine = 'ai-live';
-  return doc;
+  const doc = parseJsonLoose(r.rawText);
+  doc.engine = 'ai-' + arm.toLowerCase();
+  doc.grounding = 'evidence';
+  return { doc, usage: r.usage, ms: r.ms, model: r.model, prompt, rawText: r.rawText };
 }

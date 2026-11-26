@@ -1,0 +1,10 @@
+# 비밀값·산출물은 커밋하지 않는다
+.env
+.env.*
+!.env.example
+
+# AI 실험 산출물(실호출 결과·블라인드 패키지 포함)
+tests/ai-compare/out/
+
+# OS
+.DS_Store
