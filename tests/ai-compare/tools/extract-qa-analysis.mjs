@@ -17,6 +17,7 @@ import { dirname, resolve } from 'node:path';
 import { loadEngine } from '../lib/load.mjs';
 import { buildContext, ASOF } from '../lib/readings.mjs';
 import { conflictObligations } from '../lib/facts.mjs';
+import { COMPARISON_PAIRS } from '../lib/pairs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(HERE, '../../..');
@@ -160,6 +161,7 @@ const out = {
     note: 'QA01~12 원본 입력을 실제 앱 엔진으로 다시 계산한 결과다. analysisData 는 판정이 아니라 사실이며, lint() 를 통과해야 한다.'
   },
   pilotSet: PILOT,
+  comparisonSet: COMPARISON_PAIRS.map((p) => ({ id: p.id, fixtures: p.fixtures, axis: p.axis, question: p.question })),
   profiles
 };
 
@@ -204,6 +206,14 @@ L.push('');
 L.push('선정 이유: ' + PILOT.coverage);
 L.push('');
 L.push('교체 후보: ' + PILOT.alternates.join(' · '));
+L.push('');
+L.push('## 전체 실험 비교쌍 (--mode full 필수)');
+L.push('');
+L.push('전체 실험은 아래 세 쌍을 반드시 포함한다. run.mjs 가 빠진 픽스처를 발견하면 실행을 중단한다.');
+L.push('');
+L.push('| id | 픽스처 | 비교 축 | 무엇을 보는가 |');
+L.push('|---|---|---|---|');
+COMPARISON_PAIRS.forEach((p) => L.push('| ' + p.id + ' | ' + p.fixtures.join('·') + ' | ' + p.axis + ' | ' + p.question + ' |'));
 L.push('');
 L.push('## 12건 요약');
 L.push('');

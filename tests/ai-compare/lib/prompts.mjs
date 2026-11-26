@@ -3,8 +3,8 @@
    --------------------------------------------------------------------------
    실험의 축은 '무엇을 주는가' 하나뿐이다. 모델·temperature·출력 형식은 고정한다.
 
-     B  명식 기본표만            (계산된 해석 없음)
-     C  + analysisData·period    (사실은 다 주지만 명리 지식은 주지 않음)
+     B  명식 기본표 + 대운·세운   (계산된 해석·지식베이스 없음. 모델의 명리 지식은 허용)
+     C  + analysisData           (사실은 다 주지만 명리 지식은 주지 않음)
      D  + 지식베이스             (문헌 확인 / 현대적 해석 / 제품 규약을 구분해 줌)
      E  D 의 초안 + 비평기       (명리 오류·논리 비약·상충 누락·바넘·개인화 부족을 지적하고 재작성)
 
@@ -13,7 +13,7 @@
 import { SECTIONS, DOC_VERSION } from './schema.mjs';
 import { kbPromptBlock } from './knowledge-base.mjs';
 
-export const PROMPT_VERSION = 'p/1.0';
+export const PROMPT_VERSION = 'p/1.1';
 
 /* ---------------- 8개 섹션 과제 ---------------- */
 export const SECTION_TASKS = [
@@ -102,7 +102,7 @@ const CORE = [
 ];
 
 const ARM_INPUT_NOTE = {
-  B: '너에게는 명식 기본표(간지·오행 개수·표면 십성·12운성·지장간 표)만 주어진다. analysisData·대운·세운·지식베이스는 없다. 없는 정보가 필요한 섹션은 비워 둔다.',
+  B: '너에게는 기본 명식(간지·오행 개수·표면 십성·12운성·지장간 표)과 대운·세운이 주어진다. analysisData(코드가 계산한 상세 사실)와 지식베이스는 없다. 네가 아는 명리 지식을 활용해 종합 해석해도 된다 — 다만 계산된 사실과 네 해석을 구분해 말하고, 입력에 없는 간지·합충·십성 개수를 만들지 않는다. 대운·세운의 간지와 십성은 입력에 있으니 §08 에 쓸 수 있다.',
   C: '너에게는 analysisData(코드가 계산한 사실)와 대운·세운이 주어진다. 명리 지식베이스와 규칙 엔진의 판정은 주어지지 않는다. 사실 사이의 관계는 네가 종합하되, 입력에 없는 규칙을 새로 만들지 않는다.',
   D: '너에게는 analysisData 와 대운·세운, 그리고 지식베이스가 주어진다. 지식베이스 항목은 [문헌 확인]·[현대적 해석]·[제품 규약]으로 표기돼 있다. 표기를 구분해 인용하고, 문헌 확인이 아닌 것을 원문 근거처럼 말하지 않는다.',
   E: '너는 비평자 겸 재작성자다. 먼저 초안을 비평 축으로 검사하고, 지적한 것을 모두 고친 최종본을 쓴다. 초안에 없는 사실을 더하지 않고, 초안의 근거 ID 범위 안에서만 고친다.'
@@ -191,14 +191,15 @@ export function userPrompt(arm, ctx, opts) {
   };
   if (arm !== 'B') {
     payload.analysisData = ctx.analysis;
-    payload.period = {
-      asOf: ctx.period && ctx.period.asOf,
-      seun: ctx.period && ctx.period.seun,
-      daewoon: ctx.period && ctx.period.daewoon,
-      daewoonStart: ctx.period && ctx.period.daewoonStart,
-      beforeFirstDaewoon: ctx.period && ctx.period.beforeFirstDaewoon
-    };
   }
+  /* 대운·세운은 B 도 받는다 — 코드가 계산한 기본 사실이다(리뷰 P0-1-1). */
+  payload.period = {
+    asOf: ctx.period && ctx.period.asOf,
+    seun: ctx.period && ctx.period.seun,
+    daewoon: ctx.period && ctx.period.daewoon,
+    daewoonStart: ctx.period && ctx.period.daewoonStart,
+    beforeFirstDaewoon: ctx.period && ctx.period.beforeFirstDaewoon
+  };
   if (arm === 'D' || arm === 'E') {
     payload.knowledgeBase = kbPromptBlock({});
   }

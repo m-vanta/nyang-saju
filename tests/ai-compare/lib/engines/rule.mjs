@@ -12,6 +12,27 @@ import { conflictObligations } from '../facts.mjs';
 
 const RANK_KO = { 왕: '왕', 상: '상', 휴: '휴', 수: '수', 사: '사' };
 
+/* --------------------------------------------------------------------------
+   A 콘텐츠 출처 (리뷰 P0-1-4)
+   A 는 앱의 문장 카탈로그를 쓰지만, 8섹션 그릇에 담으면서 **앱 화면에 없는 문단을
+   실험이 새로 만드는 경우**가 있다. 그것을 숨기면 A 만 실제 서비스와 같은 것으로
+   읽히므로, 섹션·문단마다 출처를 붙여 메타데이터와 리포트에 드러낸다.
+
+     service                 앱 화면의 문장을 그대로
+     service-mapped          앱 문장을 8섹션 자리로 옮겨 담음
+     experimental-generated  앱에 없는 문단을 실험이 새로 만듦
+   -------------------------------------------------------------------------- */
+export const A_CONTENT_ORIGIN = {
+  '01': { origin: 'service', label: '서비스 문장 그대로', note: '무료 결과의 천기팩폭(FREE.BOMB)을 그대로 옮겼다.' },
+  '02': { origin: 'service', label: '서비스 문장 그대로', note: '무료 대표 성향(FREE.TRAIT)과 유료 상세(PAID.TRAIT) 문장을 그대로 옮겼다.' },
+  '03': { origin: 'experimental-generated', label: '실험용 생성', note: '앱에는 상충 섹션이 없다. rule.mjs 가 상충 의무(O1~O6)로 이 문단을 새로 만들었다.' },
+  '04': { origin: 'service-mapped', label: '서비스 문장 · 8섹션 매핑', note: '유료 화면의 반복 패턴(PAID.PATTERN) 문장을 §04 자리로 옮겨 담았다.' },
+  '05': { origin: 'service-mapped', label: '서비스 문장 · 8섹션 매핑', note: '유료 화면의 연애운(themes love) 문장을 §05 자리로 옮겨 담았다.' },
+  '06': { origin: 'service-mapped', label: '서비스 문장 · 8섹션 매핑', note: '유료 화면의 재물운(themes money) 문장을 §06 자리로 옮겨 담았다.' },
+  '07': { origin: 'service-mapped', label: '서비스 문장 · 8섹션 매핑', note: '유료 화면의 직업운(themes work) 문장을 §07 자리로 옮겨 담았다.' },
+  '08': { origin: 'experimental-generated', label: '실험용 생성', note: '앱의 흐름 설명(flowNarration)과 별개로, period 판정 문장을 이어 붙이고 고정 문장을 더해 만들었다.' }
+};
+
 function okRef(ctx, pool, id) {
   if (!id) return false;
   if (ctx.ids.has(id)) return true;
@@ -154,10 +175,12 @@ function pack(paras) {
 
 function sectionOf(id, paragraphs, reason) {
   const meta = SECTIONS.filter((s) => s.id === id)[0];
-  if (!paragraphs.length) {
-    return { id, key: meta.key, title: meta.title, status: 'unavailable', reason: reason || '이 명식에는 이 섹션에 쓸 근거가 없어요.', paragraphs: [] };
+  const origin = A_CONTENT_ORIGIN[id] || { origin: 'experimental-generated', label: '실험용 생성', note: null };
+  const paras = (paragraphs || []).map((p) => Object.assign({}, p, { contentOrigin: origin.origin }));
+  if (!paras.length) {
+    return { id, key: meta.key, title: meta.title, status: 'unavailable', reason: reason || '이 명식에는 이 섹션에 쓸 근거가 없어요.', paragraphs: [], contentOrigin: origin.origin, contentOriginNote: origin.note };
   }
-  return { id, key: meta.key, title: meta.title, status: 'ok', reason: null, paragraphs };
+  return { id, key: meta.key, title: meta.title, status: 'ok', reason: null, paragraphs: paras, contentOrigin: origin.origin, contentOriginNote: origin.note };
 }
 
 export function ruleDoc(ctx, pool) {
@@ -194,6 +217,15 @@ export function ruleDoc(ctx, pool) {
   sections.forEach((s) => s.paragraphs.forEach((p) => p.findingRefs.forEach((id) => { if (used.indexOf(id) < 0) used.push(id); })));
   const skipped = ctx.findings.map((f) => f.id).filter((id) => used.indexOf(id) < 0);
 
+  /* 출처 집계 — 섹션 수와 문단 수를 모두 낸다 */
+  const originBySection = { service: [], 'service-mapped': [], 'experimental-generated': [] };
+  const originByParagraph = { service: 0, 'service-mapped': 0, 'experimental-generated': 0 };
+  sections.forEach((s) => {
+    if (!originBySection[s.contentOrigin]) originBySection[s.contentOrigin] = [];
+    originBySection[s.contentOrigin].push(s.id);
+    s.paragraphs.forEach(() => { originByParagraph[s.contentOrigin] = (originByParagraph[s.contentOrigin] || 0) + 1; });
+  });
+
   return {
     docVersion: DOC_VERSION,
     engine: 'rule',
@@ -205,7 +237,10 @@ export function ruleDoc(ctx, pool) {
       skippedFindings: skipped,
       sectionsOk: sections.filter((s) => s.status === 'ok').length,
       sectionsUnavailable: sections.filter((s) => s.status === 'unavailable').length,
-      note: '규칙 엔진은 앱의 문장 카탈로그만 쓴다. 없는 섹션은 이유와 함께 비운다.'
+      contentOrigin: originBySection,
+      contentOriginParagraphs: originByParagraph,
+      contentOriginDefinitions: A_CONTENT_ORIGIN,
+      note: '규칙 엔진은 앱의 문장 카탈로그만 쓴다. 없는 섹션은 이유와 함께 비운다. §03·§08 처럼 앱에 없는 자리는 실험이 만든 문장이며 contentOrigin 으로 구분한다.'
     }
   };
 }

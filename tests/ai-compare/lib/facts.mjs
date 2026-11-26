@@ -4,11 +4,16 @@
    B/C/D/E 는 받는 정보가 다르다. 그래서 인용할 수 있는 근거의 범위도 다르다.
    검증기는 이 범위(pool) 밖의 근거를 '없는 근거 인용'으로 반려한다.
 
-     A  규칙 엔진의 판정(Finding)                → finding.* · chart.* · period.*
-     B  명식 기본표만                            → chart.*
+     A  규칙 엔진의 판정(Finding)                → finding.* · chart.* · analysis.* · period.*
+     B  명식 기본표 + 대운·세운                  → chart.* · period.*   (리뷰 P0-1-1)
      C  + analysisData (사실)                    → chart.* · analysis.* · period.*
      D  + 구조화 지식베이스                      → C + kb.*
      E  D 의 검증자·수정자                        → D 와 같음
+
+   B 도 대운·세운을 받는다. '명식만'이라는 이름은 그대로 두되, 대운·세운은 코드가
+   정확히 계산한 기본 사실이므로 B 에서도 인용할 수 있어야 한다. 그래야 B 의 실패가
+   '입력 설계 때문에 구조적으로 불리'한 것이 아니라 '지식베이스·analysisData 가
+   없을 때 어디까지 가는가'를 재는 것이 된다.
 
    analysis.* 는 잎 값만이 아니라 배열 길이도 낸다(analysis.roots.count = 0 같은
    '없음'이 인용 가능한 사실이어야 상충 설명을 채점할 수 있다).
@@ -17,7 +22,7 @@ import { SECTIONS } from './schema.mjs';
 
 export const ARMS = {
   A: { key: 'A', name: 'rule', label: '규칙 기반 해석', grounding: 'findings', inputs: ['chart', 'analysis', 'findings', 'period'] },
-  B: { key: 'B', name: 'chart', label: '명식만 준 AI', grounding: 'evidence', inputs: ['chart'] },
+  B: { key: 'B', name: 'chart', label: '명식·대운·세운만 준 AI', grounding: 'evidence', inputs: ['chart', 'period'] },
   C: { key: 'C', name: 'analysis', label: '명식+analysisData AI', grounding: 'evidence', inputs: ['chart', 'analysis', 'period'] },
   D: { key: 'D', name: 'knowledge', label: '명식+analysisData+지식베이스 AI', grounding: 'evidence', inputs: ['chart', 'analysis', 'period', 'kb'] },
   E: { key: 'E', name: 'critic', label: 'D + 검증자(Critic)·수정자', grounding: 'evidence', inputs: ['chart', 'analysis', 'period', 'kb'] }
@@ -132,27 +137,7 @@ export function evidencePool(ctx, armKey, kb) {
   push(map, 'chart.month.monthType', 'chart', a.monthCommand.monthType);
   push(map, 'chart.month.season', 'chart', a.monthCommand.season);
 
-  if (!arm.inputs.includes('analysis')) return map;
-
-  /* analysis.* — 사실 트리 전체를 경로로 편다 (A 도 analysisData 를 계산해 낸다) */
-  walkAnalysis(a, '', map);
-  pushCounts(map, a, 'analysis');
-
-  /* A — 규칙 엔진의 판정을 그대로 인용한다 */
-  if (armKey === 'A') {
-    /* A 는 앱과 같이 판정 id 를 그대로 인용한다. 'finding.' 접두 형태도 함께 둔다. */
-    (ctx.findings || []).forEach((f) => {
-      const short = f.display ? f.display.short : f.id;
-      push(map, f.id, 'finding', short);
-      if (!map.has('finding.' + f.id)) push(map, 'finding.' + f.id, 'finding', short);
-    });
-    (ctx.ids || []).forEach((id) => {
-      if (!map.has(id)) push(map, id, 'finding', id);
-      if (!map.has('finding.' + id)) push(map, 'finding.' + id, 'finding', id);
-    });
-  }
-
-  /* period.* — 대운·세운 */
+  /* period.* — 대운·세운. B 도 받는다(리뷰 P0-1-1). */
   const pd = ctx.period;
   if (pd && pd.seun) {
     push(map, 'period.seun.ganzhi', 'period', pd.seun.hanja);
@@ -174,6 +159,26 @@ export function evidencePool(ctx, armKey, kb) {
     push(map, 'period.daewoon.none', 'period', true);
   }
   if (pd && pd.daewoonStart) push(map, 'period.daewoonStart.forward', 'period', pd.daewoonStart.forward);
+
+  if (!arm.inputs.includes('analysis')) return map;
+
+  /* analysis.* — 사실 트리 전체를 경로로 편다 (A 도 analysisData 를 계산해 낸다) */
+  walkAnalysis(a, '', map);
+  pushCounts(map, a, 'analysis');
+
+  /* A — 규칙 엔진의 판정을 그대로 인용한다 */
+  if (armKey === 'A') {
+    /* A 는 앱과 같이 판정 id 를 그대로 인용한다. 'finding.' 접두 형태도 함께 둔다. */
+    (ctx.findings || []).forEach((f) => {
+      const short = f.display ? f.display.short : f.id;
+      push(map, f.id, 'finding', short);
+      if (!map.has('finding.' + f.id)) push(map, 'finding.' + f.id, 'finding', short);
+    });
+    (ctx.ids || []).forEach((id) => {
+      if (!map.has(id)) push(map, id, 'finding', id);
+      if (!map.has('finding.' + id)) push(map, 'finding.' + id, 'finding', id);
+    });
+  }
 
   /* kb.* — 지식베이스는 D/E 만 준다 */
   if (arm.inputs.includes('kb') && kb) {
@@ -268,3 +273,8 @@ export function chartOnlyContext(ctx) {
 }
 
 export const SECTION_KEYS = SECTIONS.map((s) => s.key);
+
+/* 표기 대응 — 검증기·블라인드 패키지가 같은 말을 쓰도록 한 곳에 둔다 */
+export const GROUP_KO = { peer: '비겁', output: '식상', wealth: '재성', power: '관성', resource: '인성' };
+export const PILLAR_KO = { year: '년', month: '월', day: '일', hour: '시' };
+export const ELEM_KO = { 목: '나무', 화: '불', 토: '흙', 금: '쇠', 수: '물' };

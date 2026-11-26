@@ -11,7 +11,7 @@
      2  근거와 부분적으로 어긋남 · 근거 없음
      1  인용과 무관한 판정
    ========================================================================== */
-import { paragraphsOf } from './metrics.mjs';
+import { paragraphsOf, isPersonalRef } from './metrics.mjs';
 
 export const RUBRIC = [
   { score: 5, text: '인용한 근거만으로 문장이 성립하고, 상충이 있으면 양쪽과 조건을 말하며, 개인화돼 있다' },
@@ -21,14 +21,14 @@ export const RUBRIC = [
   { score: 1, text: '인용과 무관한 판정·사실을 말한다' }
 ];
 
-const HARD_RULES = ['V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V13'];
+const HARD_RULES = ['V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V13', 'V17', 'V18', 'V19', 'V20'];
 
 export function heuristicScore(doc, ctx, validation, opts) {
   const o = opts || {};
   const paras = paragraphsOf(doc);
   if (!paras.length) return 1;
   const hard = validation.violations.filter((x) => HARD_RULES.indexOf(x.rule) >= 0).length;
-  const soft = validation.violations.filter((x) => ['V1', 'V15'].indexOf(x.rule) >= 0).length;
+  const soft = validation.violations.filter((x) => ['V1', 'V15', 'V21'].indexOf(x.rule) >= 0).length;
   const caMiss = (validation.obligations || []).filter((ob) => ob.reachable).length > 0
     && (validation.violations || []).some((x) => x.rule === 'V15');
   const kbMiss = (o.arm === 'D' || o.arm === 'E') && validation.violations.some((x) => x.rule === 'V13');
@@ -38,7 +38,8 @@ export function heuristicScore(doc, ctx, validation, opts) {
     let s = 5;
     const refs = p.refs.all;
     if (!refs.length) s = 2;
-    const personal = refs.some((r) => /^(analysis\.|period\.|finding\.)/.test(r) || ctx.ids.has(r));
+    /* 명식 사실(chart.*)도 개인 근거로 센다 — B 만 구조적으로 불리해지지 않게(리뷰 P0-1-3) */
+    const personal = refs.some((r) => isPersonalRef(r, ctx));
     if (!personal) s = Math.min(s, 4);
     if (hard) s = Math.min(s, 2);
     if (soft) s = Math.min(s, 4);

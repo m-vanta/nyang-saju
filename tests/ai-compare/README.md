@@ -9,11 +9,16 @@
 
 | 실험군 | 받는 입력 | 이 실험군으로 보는 것 |
 |---|---|---|
-| **A** rule | 명식 + analysisData + Finding | 현행 앱(규칙 문장)의 기준선 |
-| **B** chart | 명식 기본표만 | AI 가 명리 지식만으로 어디까지 가는가 |
-| **C** analysis | + analysisData·대운·세운 | 사실을 다 줘도 지식베이스가 없으면 어떤가 |
+| **A** rule | 명식 + analysisData + Finding(앱 카탈로그) | 현행 앱(규칙 문장)의 기준선 |
+| **B** chart+period | 기본 명식 + 대운·세운 | 모델 자체의 명리 지식만으로 어디까지 가는가 |
+| **C** analysis | + analysisData | 사실을 다 줘도 지식베이스가 없으면 어떤가 |
 | **D** knowledge | + 지식베이스 35항목 | 검증된 명리 문장을 주면 달라지는가 |
 | **E** critic | D + D 초안 비평·재작성 | 자기 검토 한 번이 품질을 올리는가 |
+
+- B 도 **대운·세운**을 받는다(코드가 계산한 기본 사실). 예전 B(명식만)는 §08 을 쓸 수 없고
+  `chart.*` 인용이 일반론으로 채점돼 구조적으로 불리했다 — 리뷰 P0-1 반영.
+- C 와 D 의 차이는 **지식베이스 하나뿐**이다(자기시험이 확인).
+- A 문단은 `contentOrigin`(service / service-mapped / experimental-generated)으로 출처를 구분한다.
 
 출력은 다섯 실험군 모두 **8섹션 그릇**(`lib/schema.mjs`, `reading/2.0`)에 담는다.
 ① 천기팩폭 ② 대표 성향 ③ 내면의 상충하는 성향 ④ 반복되는 행동 패턴 ⑤ 연애운 ⑥ 재물운 ⑦ 직업운 ⑧ 대운 및 올해 운세.
@@ -30,7 +35,7 @@ node tests/ai-compare/run.mjs --mode stub --set pilot
 
 # 실호출 — 파일럿 3건 / 전체 12건 (ANTHROPIC_API_KEY 필요)
 node tests/ai-compare/run.mjs --mode pilot --max-calls 30 --max-cost-usd 5
-node tests/ai-compare/run.mjs --mode full
+node tests/ai-compare/run.mjs --mode full --max-cost-usd 20
 
 # 실호출 배선을 스텁으로 예행
 node tests/ai-compare/run.mjs --mode full --stub
@@ -43,19 +48,18 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 |---|---|
 | `--mode stub` | 결정적 오프라인 응답. 네트워크·키 없음 |
 | `--mode pilot` | 파일럿 3건 실호출 |
-| `--mode full` | QA01~12 실호출 |
+| `--mode full` | QA01~12 실호출 (**비교쌍 3종 필수**) |
 | `--set pilot\|all` | 픽스처 부분집합 |
 | `--fixtures <path>` | 다른 픽스처 파일(`profiles` 또는 `charts` 배열) |
 | `--arms A,B,C,D,E` | 일부 실험군 |
 | `--max-calls N` | 모델 호출 총 횟수 상한(재시도 포함) |
 | `--max-retries N` | 검증 실패 재시도 횟수(기본 1) |
-| `--max-cost-usd X` | 누적 비용 상한. 넘으면 남은 픽스처를 건너뛴다 |
-| `--model <id>` | 기본 `claude-opus-5-5` |
+| `--max-cost-usd X` | 누적 비용 상한. **실행 전 최대 예상 비용**과 **호출 직전 시도별 예상 비용**으로 검사해 넘으면 호출하지 않는다 |
+| `--model <id>` | 기본 `claude-opus-5-5` (실제 API 호출까지 전달) |
 | `--out <dir>` | 산출물 경로(기본 `out/<runId>`) |
 | `--stub` | pilot/full 배선을 스텁으로 |
 
-종료 코드: 하네스·검증기 자기시험이 실패하면 1. 실험군 gate 결과는 리포트에 적는다
-(B 의 gate 실패는 설계상 예상 — 리포트에 그렇게 표시).
+종료 코드: 하네스·검증기 자기시험이 실패하면 1, 예산·비교쌍 설정 오류는 2.
 
 ## 무엇을 재는가
 
@@ -63,15 +67,17 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 |---|---|---|---|
 | EA-1 인용 유효율 | 유효 근거 / 전체 근거 | 결정적 | 100% |
 | EA-2 문단 근거율 | 근거 ≥1 문단 / 전체 문단 | 결정적 | 100% |
-| CA 상충 설명률 | 상충 의무를 양쪽 인용 + 조건까지 설명 | 결정적 | ≥90% |
-| HZ 환각 | 없는 간지·십성·합충 (V4·V5·V6) | 결정적 | 0 |
+| CA 상충 설명률 | 상충 의무를 **한 문단에서** 양쪽 인용 + 조건까지 설명 | 결정적 | ≥90% |
+| HZ 환각 | 없는 간지·십성·합충·층위 혼동 (V4·V5·V6·V18) | 결정적 | 0 |
 | GA 금지 판정 | 신강·신약·용신·격국 확정·단정·민감 (V7·V8·V9) | 결정적 | 0 |
 | SC 스키마 | 8섹션 그릇 위반 | 결정적 | 0 |
 | CR 모순률 | 사실과 반대되는 주장 문단 | 결정적 | ≤2% |
-| GN 일반론률 | 개인 사실(analysis·period·finding) 미인용 문단 | 결정적 | 참고 |
+| GN 일반론률 | 개인 사실(analysis·period·finding·**chart**) 미인용 문단 | 결정적 | 참고 |
+| GN(구정의) | `chart.*` 만 인용한 문단 비율 | 결정적 | 참고(게이트 미적용) |
+| 구조/내용 위반 | V1·V2·V3·V13 / 나머지 규칙 위반 수 | 결정적 | 참고 |
 | KB/문단 | 지식베이스 인용 밀도(D·E) | 결정적 | 참고 |
 | judge | 루브릭 5점 근사 | 결정적 근사 | ≥4.5 |
-| 비용·지연 | 입력/출력 토큰, USD/KRW, p50/p95, 재시도 | 계측 | 상한 내 |
+| 비용·지연 | 입력/출력 토큰, USD/KRW, p50/p95, 재시도·잘림·오류 | 계측 | 상한 내 |
 
 `judge` 는 `--mode stub` 에서 **결정적 근사**다(모델 채점이 아니다). 같은 루브릭(§7.6)을
 근거·개인화·상충·위반으로 근사하고 리포트에 그 사실을 명시한다.
@@ -89,52 +95,90 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 | O5 | 시진 안 절입 — 월주가 갈릴 수 있음 |
 | O6 | 시주 미상(여섯 글자) |
 
-의무 = "그 축을 말하려면 양쪽을 인용하고, 언제 어느 쪽이 드러나는지(조건)를 말해야 한다".
+의무 = "그 축을 말하려면 **한 문단에서 양쪽을 인용**하고, 언제 어느 쪽이 드러나는지(조건)를 말해야 한다".
 실험군이 그 근거를 볼 수 없으면 `reachable:false` 로 남기고 CA 분모에서 뺀다(못 본 것을 못 봤다고 적는다).
 
-## 검증기 자기시험
+## 검증기 — 구조·참조 / 내용 분리
 
-`lib/engines/stub.mjs` 의 `probeDocs()` 는 **일부러 어긋난 문서**를 만든다
-(없는 간지 · 없는 십성 · 없는 합충 · 근거 없음 · 입력 범위 밖 근거 · 단정 · 민감 · 금지 판정어 · KB 누락 · 정상).
-런 중에 검증기가 이것을 잡지 못하면 하네스가 실패한다. '검증기가 실제로 문다'는 증거다.
+- **구조·참조**: V1(스키마)·V2(근거 존재)·V3(입력 범위)·V13(KB 참조). 계산으로 100% 판정.
+- **내용(자동)**: V4~V12·V14~V21. 결정적으로 잡히는 사실·정합성 위반만 본다.
 
-## 블라인드 평가 패키지
+**자동 통과는 명리학적 해석 품질을 보증하지 않는다.** 이 문장은 리포트·score.json 에 매번 적힌다.
 
-`out/<runId>/blind/` 에 생성된다.
+새로 추가된 내용 규칙(리뷰 P0-2):
+
+| 규칙 | 잡는 것 |
+|---|---|
+| V15(강화) | 상충 근거를 서로 다른 문단에 나눠 조건 없이 통과시키는 우회 |
+| V16 | 유효한 근거 ID를 붙였지만 문단이 그 사실을 하나도 쓰지 않음 |
+| V17 | 실재하는 글자를 틀린 기둥(년/월/일/시)에 배치 |
+| V18 | 표면 십성과 지장간 십성 개수 층위 혼동 |
+| V19 | 원국과 대운·세운의 십성 혼동 |
+| V20 | 시주 미상인데 시주 해석 |
+| V21 | `unavailable` 로 검사 회피(사유 없음·근거 있는 섹션 비움·절반 이상 비움) |
+
+### 검증기 자기시험 (매 실행)
+
+`lib/engines/stub.mjs` 의 `probeDocs()` 가 정상 문서의 한 섹션만 바꿔 끼워 오류를 주입한다
+(없는 간지 · 없는 십성 · 없는 합충 · 근거 없음 · 입력 범위 밖 근거 · 단정 · 민감 · 금지 판정어 ·
+KB 누락 · 상충 한쪽만 · **상충 문단 분리** · **무관 근거** · **기둥 오배치** · **층위 혼동** ·
+**원국/대운 혼동** · **시주 미상 해석** · **섹션 비움 회피** · 정상).
+런 중에 검증기가 이것을 잡지 못하면 하네스가 실패한다(exit 1). 결과는 리포트 표에 남는다.
+
+## 블라인드 평가 자료 3종
+
+`out/<runId>/blind/` 에 생성된다. 자세한 내용은 `docs/ai-experiment-review-pack.md` §9.
 
 | 파일 | 공개 | 내용 |
 |---|---|---|
-| `blind-package.md` / `.json` | 평가자에게 준다 | 원본 입력·사주명식·analysisData·Model-1~5 의 8섹션 전문·참조 근거·토큰·비용·지연·재시도 |
-| `blind-key.json` | **비밀** | Model-N ↔ 실험군·모델·프롬프트 해시·설정·경계 |
+| `blind-customer.md` / `.json` | 고객 평가자 | 해석 전문만. 실험군·비용·자동 점수·근거 ID·모델명·명식 숨김 |
+| `blind-myeongri.md` / `.json` | 명리 검토자 | 명식·해석 전문 + 근거 사실 값 + 규칙/KB 출처 |
+| `tech-eval.md` / `.json` | 기술 평가자 | 실험군·요청/응답 모델·토큰·비용·지연·재시도·실패·검증 |
+| `blind-key.json` | **비밀** | 표시 id ↔ 실험군 대응표(사례별 순서)·모델·프롬프트 해시·설정 |
 | `prompts.md` | **비밀** | 시스템/사용자 프롬프트 전문 |
-| `critique.md` | **비밀** | E 의 비평 기록(있으면 E 임이 드러나므로 패키지 밖) |
+| `critique.md` | **비밀** | E 의 비평 기록 |
 
-같은 실험군은 픽스처가 달라도 같은 라벨을 쓴다(라벨은 seed 기반으로 섞는다).
-이름은 `{name}` 로 마스킹한다. 토큰·비용이 프롬프트 길이를 암시할 수 있어 **완전 블라인드는 아니다** — README 의 한계 절 참조.
+표시 순서는 **사례마다 무작위**(결정적 시드)이고, 대응표는 키에만 있다.
+같은 사례 안에서 `QA01-3` 이 무엇인지는 `blind-key.json` 을 열어야 안다.
+
+## 산출물 구조
+
+```text
+out/<runId>/
+  report.md        리포트(지표·A 콘텐츠 출처·비교쌍·probe·자기시험·한계)
+  score.json       기계용 점수·검증 경계
+  cost.json        호출별 비용·토큰 + 단가 미등록 표시 + 실행 전 예상 비용
+  docs.json        A~E 문서(스킵 포함)
+  preflight.json   예산 초과로 중단된 경우에만
+  calls/           호출별 프롬프트 전문·재시도 이력·토큰·비용·검증
+    index.json
+    QA01-D-a1.json
+  blind/           3종 패키지 + 비밀 키·프롬프트·비평
+```
 
 ## 파일
 
 ```text
-run.mjs                     오케스트레이터(A~E, 자기시험, 블라인드)
+run.mjs                     오케스트레이터(A~E, 자기시험, 블라인드 3종, 비교쌍)
 lib/schema.mjs              8섹션 그릇(reading/2.0) · 스키마 검사
 lib/facts.mjs               실험군 입력 경계 · 근거 풀 · 상충 의무
+lib/pairs.mjs               전체 실험 필수 비교쌍 3종
 lib/prompts.mjs             B/C/D/E 시스템·사용자 프롬프트
 lib/knowledge-base.mjs      명리 지식베이스 35항목(문헌/현대/제품)
-lib/validate.mjs            V1~V15
+lib/validate.mjs            V1~V21 (구조·참조 / 내용)
 lib/metrics.mjs             EA·CA·HZ·GA·SC·CR·GN·KB
 lib/judge.mjs               루브릭 근사
-lib/gates.mjs               통과 기준(+ 설계상 예상 실패)
-lib/cost.mjs                단가·토큰·비용·지연
-lib/retry.mjs               피드백 재시도 · 예산 가드
+lib/gates.mjs               통과 기준
+lib/cost.mjs                단가·토큰·비용·최대 예상 비용
+lib/retry.mjs               피드백 재시도 · 호출 전 예산 가드
 lib/report.mjs              report.md · score.json
-lib/blind-export.mjs        블라인드 패키지
-lib/engines/rule.mjs        A 규칙 기반(앱 카탈로그)
-lib/engines/stub.mjs        B~E 오프라인 응답 + probe
+lib/blind-export.mjs        블라인드 3종 · 사례별 순서 섞기
+lib/engines/rule.mjs        A 규칙 기반(앱 카탈로그) · 콘텐츠 출처 표시
+lib/engines/stub.mjs        B~E 오프라인 응답 + 검증기 probe
 lib/engines/ai.mjs          Anthropic Messages API 호출(실호출 전용)
-tools/extract-qa-analysis.mjs   QA01~12 analysisData 추출
+tools/extract-qa-analysis.mjs   QA01~12 analysisData 추출 · 비교쌍 기록
 tools/gen-kb-doc.mjs        지식베이스 문서 생성
 fixtures/charts.json        확장 픽스처(QA01~12 + T01~04 + C1~C8, O1 포함)
-out/<runId>/                report.md · score.json · cost.json · docs.json · blind/
 ```
 
 ## 한계
@@ -143,5 +187,6 @@ out/<runId>/                report.md · score.json · cost.json · docs.json ·
 - `judge` 는 결정적 근사다. 모델·사람 채점과의 상관은 실호출 라운드에서 확인해야 한다.
 - V4(간지 환각)는 한자 쌍만 본다. 한글 표기 오류는 별도 규칙이 필요하다.
 - E 의 "초안에 없는 사실 추가" 검사가 없다.
+- V16·V19 는 보수적 휴리스틱이다.
 - 토큰·비용은 stub 에서 추정치다(글자 수/2.2). 실호출에서 `usage` 로 대체된다.
 - O1 은 QA01~12 에서 발동하지 않는다 — `--fixtures fixtures/charts.json` 의 C1 로 확인.
