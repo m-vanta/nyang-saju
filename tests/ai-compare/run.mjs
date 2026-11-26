@@ -361,6 +361,8 @@ async function main() {
     const found = leaks.filter((w) => blindText.indexOf(w) >= 0);
     assert(!found.length, '패키지에 샌 것: ' + found.join(', '));
     assert(!blindText.includes('민지'), '패키지에 실명이 남았습니다.');
+    assert(blindText.indexOf('critique') < 0, '패키지에 E 의 비평 기록이 남았습니다(블라인드 깨짐).');
+    assert(blindText.indexOf('"draft"') < 0, '패키지에 D 초안이 남았습니다.');
     const ranArms = Array.from(new Set(blindItems.map((it) => it.arm)));
     assert(Object.keys(built.key.mapping).length === ranArms.length, '키 매핑 수가 실행된 실험군 수와 다릅니다.');
     return 'Model-1~' + Object.keys(built.key.mapping).length + ' · 키 분리';

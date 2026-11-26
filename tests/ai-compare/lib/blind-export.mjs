@@ -158,14 +158,13 @@ export function buildBlind(input) {
     const responses = its.slice().sort((a, b) => map[a.arm] < map[b.arm] ? -1 : 1).map((it) => {
       const blindId = map[it.arm];
       const st = statsView(it, it.validation, it.metrics);
-      key.perItem.push({ fixture: fid, blindId, ...st, arm: it.arm });
+      key.perItem.push({ fixture: fid, blindId, ...st, arm: it.arm, critiqueCount: (it.doc.critique || []).length });
       return {
         blindId,
         promptHash: it.prompt ? it.prompt.hash : null,
         sections: sectionView(it.doc, input.name),
         stats: st,
-        cautions: (it.doc.cautions || []).map((c) => maskText(c.text || c, input.name)),
-        critique: it.doc.critique || null
+        cautions: (it.doc.cautions || []).map((c) => maskText(c.text || c, input.name))
       };
     });
     return {
@@ -193,7 +192,8 @@ export function buildBlind(input) {
 
   const md = renderPackageMd(pkg);
   const promptsMd = renderPromptsMd(input, key);
-  return { key, pkg, md, promptsMd, map };
+  const critiqueMd = renderCritiqueMd(input, key);
+  return { key, pkg, md, promptsMd, critiqueMd, map };
 }
 
 function renderPackageMd(pkg) {
@@ -244,11 +244,6 @@ function renderPackageMd(pkg) {
         });
         L.push('');
       });
-      if (r.critique && r.critique.length) {
-        L.push('**비평 기록 (' + r.blindId + ')**');
-        r.critique.forEach((c) => L.push('- [' + c.dimension + '] ' + c.where + ' — ' + c.issue + ' → ' + c.fix));
-        L.push('');
-      }
     });
   });
   return L.join('\n');
@@ -289,6 +284,22 @@ function renderPromptsMd(input, key) {
   return L.join('\n');
 }
 
+/* E 의 비평 기록 — '비평이 있다'는 것 자체가 E 를 가리키므로 블라인드 패키지 밖에 둔다. */
+function renderCritiqueMd(input, key) {
+  const L = [];
+  L.push('# 비평 기록 (비밀 — 평가 후 공개)');
+  L.push('');
+  L.push('E 의 초안 비평은 그 응답이 E 라는 것을 드러내므로 블라인드 패키지에서 뺐다. 평가가 끝난 뒤 여기서 확인한다.');
+  L.push('');
+  input.items.filter((it) => it.doc && it.doc.critique && it.doc.critique.length).forEach((it) => {
+    L.push('## ' + it.ctx.fixture.id + ' — ' + key.mapping[it.arm]);
+    L.push('');
+    it.doc.critique.forEach((c) => L.push('- [' + c.dimension + '] ' + c.where + ' — ' + c.issue + ' → ' + c.fix));
+    L.push('');
+  });
+  return L.join('\n');
+}
+
 export function writeBlind(outDir, built) {
   const dir = resolve(outDir, 'blind');
   mkdirSync(dir, { recursive: true });
@@ -296,5 +307,6 @@ export function writeBlind(outDir, built) {
   writeFileSync(resolve(dir, 'blind-package.json'), JSON.stringify(built.pkg, null, 1), 'utf8');
   writeFileSync(resolve(dir, 'blind-key.json'), JSON.stringify(built.key, null, 1), 'utf8');
   writeFileSync(resolve(dir, 'prompts.md'), built.promptsMd, 'utf8');
+  if (built.critiqueMd) writeFileSync(resolve(dir, 'critique.md'), built.critiqueMd, 'utf8');
   return dir;
 }

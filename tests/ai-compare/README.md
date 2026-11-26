@@ -107,6 +107,7 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 | `blind-package.md` / `.json` | 평가자에게 준다 | 원본 입력·사주명식·analysisData·Model-1~5 의 8섹션 전문·참조 근거·토큰·비용·지연·재시도 |
 | `blind-key.json` | **비밀** | Model-N ↔ 실험군·모델·프롬프트 해시·설정·경계 |
 | `prompts.md` | **비밀** | 시스템/사용자 프롬프트 전문 |
+| `critique.md` | **비밀** | E 의 비평 기록(있으면 E 임이 드러나므로 패키지 밖) |
 
 같은 실험군은 픽스처가 달라도 같은 라벨을 쓴다(라벨은 seed 기반으로 섞는다).
 이름은 `{name}` 로 마스킹한다. 토큰·비용이 프롬프트 길이를 암시할 수 있어 **완전 블라인드는 아니다** — README 의 한계 절 참조.
