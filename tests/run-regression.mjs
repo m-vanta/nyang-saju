@@ -29,7 +29,7 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 const FILES = [
-  'vendor/manseryeok.js', 'src/domain/tables.js', 'src/domain/chart.js', 'src/domain/period.js',
+  'vendor/manseryeok.js', 'src/domain/tables.js', 'src/domain/chart.js', 'src/domain/analysis.js', 'src/domain/period.js',
   'src/rules/findings.js', 'copy.js', 'src/content/paid-strings.js', 'src/content/free.js',
   'src/content/paid.js', 'src/render/select.js', 'saju.js', 'palja.js'
 ];
@@ -425,6 +425,78 @@ check('CONTENT', '유료 성향 문단이 무료 성향 36문단과 겹치지 �
   const hit = paidTexts.filter((t) => free.has(t));
   eq(hit, [], '동일 문단');
   return '무료 ' + free.size + '종 · 유료 ' + new Set(paidTexts).size + '종';
+});
+
+/* ---------------- 5. analysisData (v2.4) ---------------- */
+const A = sandbox.NyangAnalysis;
+
+check('AN', 'analysisData — 결정적·필수 노드·금지 키 0 (원본 12명식)', () => {
+  assert(A, 'NyangAnalysis 없음');
+  const need = ['schemaVersion', 'tables', 'chart', 'dayMaster', 'monthCommand', 'hiddenStems', 'earlyQiCandidates',
+    'roots', 'deukryeong', 'deukji', 'deukse', 'elementFacts', 'tenGodFacts', 'saenggeuk', 'hapchong', 'geokguk', 'flags'];
+  for (const p of qaOriginal.profiles) {
+    const c = chartOf(p);
+    const a = A.build(c);
+    eq(a.schemaVersion, 'analysis/1.0', p.id + ' schemaVersion');
+    for (const k of need) assert(a[k] !== undefined, p.id + ' 노드 없음: ' + k);
+    eq(A.lint(a), [], p.id + ' 린트');
+    eq(JSON.stringify(a), JSON.stringify(A.build(chartOf(p))), p.id + ' 결정성');
+  }
+  return '12명식 · 결정적 · 금지 키 0';
+});
+
+check('AN', '분석 칩 — 득령·득지·득세가 각각 독립 판독으로만 나온다', () => {
+  const a = A.build(chartOf(qaOriginal.profiles[8]));   // QA09 乙 · 戊辰 庚申 乙未 丁亥
+  eq(a.monthCommand.branch, '申', '월지');
+  eq(a.monthCommand.monthType, '생지', '월지 분류');
+  eq(a.monthCommand.season, '가을', '계절');
+  eq(a.monthCommand.wangXiang, { 목: '사', 화: '수', 토: '휴', 금: '왕', 수: '상' }, '왕상휴수사');
+  eq(a.deukryeong.bySeasonRank.rank, '사', '득령 계절 판독');
+  eq(a.deukryeong.byStage.stage, '태', '득령 12운성 판독');
+  eq(a.deukryeong.byMainQiTenGod.tenGod, '정관', '득령 본기 십성 판독');
+  eq(a.deukryeong.byElementCycle.relation, 'controls-me', '득령 오행 판독');
+  eq(a.deukji.byStage.stage, '양', '득지 12운성 판독');
+  eq(a.deukji.rootGrade.value, '경', '일지 통근 등급');
+  eq(a.roots.map((r) => r.pillar + ':' + r.stem), ['year:乙', 'day:乙', 'hour:甲'], '통근 목록(辰 여기 乙 포함)');
+  eq(a.tenGodFacts.groupsByHiddenAll, { peer: 3, output: 2, wealth: 4, power: 2, resource: 3 }, '지장간 전체 묶음 개수');
+  assert(!('supported' in a.deukryeong), '득령이 단일 boolean 으로 접혔다');
+  return 'QA09 — 4판독 분리 · 통근 2개 · 개수 3/2/4/2/3';
+});
+
+check('AN', '격국 — QA09 일부 일치, QA04 불일치. 확정하지 않는다', () => {
+  const a9 = A.build(chartOf(qaOriginal.profiles[8]));
+  eq(a9.geokguk.monthType, '생지', 'QA09 월지 분류');
+  eq(a9.geokguk.agreement, 'partial', 'QA09 agreement');
+  eq(a9.geokguk.decided, false, 'QA09 확정하지 않아야 함');
+  const ids9 = a9.geokguk.candidates.map((c) => c.id);
+  ['GEOK.BONGGI.정관', 'GEOK.TUTUL.庚.정관', 'GEOK.TUTUL.戊.정재'].forEach((id) => assert(ids9.includes(id), 'QA09 후보 없음: ' + id));
+
+  const a4 = A.build(chartOf(qaOriginal.profiles[3]));   // QA04 丁 · 癸卯 乙丑 丁酉 丙午
+  eq(a4.geokguk.monthType, '잡기', 'QA04 월지 분류');
+  eq(a4.geokguk.agreement, 'differs', 'QA04 agreement');
+  assert(a4.geokguk.candidates.some((c) => c.id === 'GEOK.HOEJUK.금'), 'QA04 회국 후보 없음');
+  assert(a4.hapchong.some((h) => h.id.indexOf('CHUNG.branch.卯酉') === 0), 'QA04 卯酉 충 없음');
+  assert(a4.geokguk.unresolved.length > 0, '확정 불가 사유 없음');
+  return 'QA09 partial · QA04 differs · decided false';
+});
+
+check('AN', 'FLAG.DOHWA — rules 층이 내고 render 는 합성하지 않는다', () => {
+  const c = chartOf(qaOriginal.profiles[0]);   // QA01 戊午 일주 = 도화
+  assert(c.dohwa, 'QA01 도화 아님');
+  assert(R.core(c).some((f) => f.id === 'FLAG.DOHWA'), 'rules.core 에 FLAG.DOHWA 없음');
+  const sel = readFileSync(resolve(appDir, 'src/render/select.js'), 'utf8');
+  assert(!/idx\.map\['FLAG\.DOHWA'\]/.test(sel), 'select.js 가 아직 FLAG.DOHWA 를 합성');
+  return 'rules 에서 1회 · render 합성 0';
+});
+
+check('AN', 'earlyQi 는 참고값일 뿐 판정에서 참조하지 않는다', () => {
+  const a = A.build(chartOf(qaOriginal.profiles[8]));
+  assert(a.earlyQiCandidates.length === 0, '생지월에는 왕지 분야 참고값을 넣지 않는다');
+  const a0 = A.build(chartOf(qaOriginal.profiles[0]));  // 子월 = 왕지
+  assert(a0.earlyQiCandidates.length > 0, '왕지월 참고값 없음');
+  a0.earlyQiCandidates.forEach((e) => eq(e.use, 'reference-only', 'use'));
+  assert(!JSON.stringify(a0.geokguk).includes('earlyQi'), 'geokguk 이 earlyQi 참조');
+  return '왕지 ' + a0.earlyQiCandidates.length + '건 · use reference-only';
 });
 
 /* ---------------- 출력 ---------------- */

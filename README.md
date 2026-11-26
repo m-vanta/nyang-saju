@@ -27,7 +27,151 @@
 
 ---
 
-## 0. v2.3 구조 개선 (2026-11-25)
+## 0. v2.4 개선 (2026-11-25) — 판독을 사실로 · 물상 일러스트 · 비교 하네스
+
+### 0-A. `analysisData` — 판정을 만들지 않는 구조화 사실
+
+`src/domain/analysis.js` 가 명식에서 **사실만** 뽑습니다. 격국 확정·득령/득지/득세 합산·용신 판정은 넣지 않았습니다.
+
+- **득령·득지·득세는 각각 독립 판독**: 오행 생조(방향까지) · 왕상휴수사 · 12운성(표 기준 강집합) · 본기 십성. `supported` 같은 단일 boolean 으로 접는 필드는 린트가 거부합니다.
+- **통근**: 지지별 지장간을 重/輕 두 등급으로 나열(`rootGrade`). 長生祿旺=重, 그 밖=輕.
+- **격국**: 본기·투출·회국·祿/刃 후보를 **모두** 내고 `agreement(same|partial|differs|none)` 만 기록. `decided:false` 고정.
+- **합충**: 천간합·천간충·육합·육충·형·파·해·삼합/반합. 合化는 `transform.possible` 까지만, `decided:false`.
+- **earlyQiCandidates**: 月律分野 일수는 참고값(`use:'reference-only'`)이고 어떤 판정도 참조하지 않습니다(문헌이 부정).
+- **린트**: `NyangAnalysis.lint()` 가 `verdict|strength|score|total|grade|신강|신약|sum|avg|combined` 키와 earlyQi 참조를 잡습니다. `tests/run-regression.mjs` AN 항목이 12명식 전부에 대해 0건을 확인합니다.
+- **`FLAG.DOHWA` 이동**: `src/render/select.js` 가 합성하던 도화 판정을 `src/rules/findings.js` 로 옮겼습니다. 이제 렌더 층은 판정을 만들지 않습니다.
+- `worker/tools/sync-engine.mjs` 가 `analysis.js` 도 서버 사본으로 복사합니다(서버가 간지 8자로 같은 사실을 다시 계산할 수 있게).
+
+### 0-B. 비교 하네스 `tests/ai-compare/`
+
+규칙 기반 출력과 AI 종합 해석을 같은 모양(`ReadingDoc`)으로 맞춰 재는 오프라인 하네스입니다.
+
+```bash
+node tests/ai-compare/run.mjs --mode stub          # CI · 네트워크 없음
+node tests/ai-compare/run.mjs --mode score --in out/<runId>
+```
+
+- 픽스처 22개(원본 QA 12 · 경계 4 · 설계 상충 C1~C8), 엔진 2개(rule · ai) = 44건.
+- 지표 EA-1/EA-2(인용·근거율) · CA(상충 설명률) · CR(모순률) · HR(창작률) · TC(톤) · SF(안전) · 결정성.
+- 검증기 G1~G12 + **자기시험**: 일부러 어긋난 문서 3종(없는 판정·근거 없음·민감 단정)을 잡지 못하면 하네스가 실패합니다.
+- v2.4 실행 결과: rule EA 100/100 · CA 6/6 · CR 0% · HR 0% · SF 0 · judge 4.91 **PASS**, ai(stub) 100/100 · CA 6/6 · CR 0% · HR 0% · judge 4.88 **PASS**.
+- 실호출(`--mode live`)은 worker 경유 키가 필요하고, 결과는 `out/`(gitignore)에만 둡니다.
+
+### 0-C. 디자인 — 일러스트만 남기고 장식은 덜어냄
+
+- **일간 10종 물상 일러스트**: 甲 큰 나무 · 乙 꽃 · 丙 태양 · 丁 촛불 · 戊 큰 산 · 己 밭 · 庚 바위 · 辛 보석 · 壬 바다 · 癸 안개비. 동양화 × 콩눈 펜선 톤으로 4:5 일러스트(`public/scene-*`)와 얼굴 아바타(`public/face-*`, 1:1)를 만들었습니다.
+- **캐릭터 중심 히어로**: 무료·유료 결과 상단을 전면 일러스트로 바꿨고, 세로 '팔자' 패 같은 잡다한 장식은 뺐습니다.
+- **원형 아바타 인연 궤도**: 중심 노드와 친구 노드를 일간 얼굴 아바타(원형)로 그립니다. 관계 유형 색 점은 모서리에 작게 남겼고, 임의 점수는 여전히 화면에 없습니다(`친구 초대 · 준비 중` 유지).
+- **프리미엄 리포트**: `한 줄로 정리하면` 박스, `사주로 본 근거` 아이콘 카드 6개(일간·월령·계절 자리·12운성·통근·표면 최다), 세로 먹선을 옅은 **수묵 구분선**으로 바꾸고 근거 칩을 카드형으로 정리했습니다.
+- **공유 카드 9:16 / 1:1**: 일러스트 + 얼굴 메달 + 천기팩폭 띠 + 오행 띠로 재배치했습니다. 이름·생년월일·시간·성별은 카드에 넣지 않고, 정식 결제는 계속 OFF(`PAYMENTS = "off"`)입니다.
+
+### 0-D. 검증 (2026-11-25)
+
+| 검사 | 결과 |
+|---|---|
+| `node tests/run-regression.mjs` | **122/122** (AN 5항목 추가) |
+| `node tests/ai-compare/run.mjs --mode stub` | rule PASS · ai(stub) PASS · probe 3/3 |
+| `tools/check-engine.py` | 기준값 전부 일치 · 오행 % 100 |
+| `tools/check-type.py` | 12px 미만 0 · 본문 16px/1.7 · 한자만 명조 |
+| `tools/check-layout.py` | 360·390·430 최소 여백 22.3px · 겹침 0 |
+| `tools/check-orbit.py` · `check-funnel.py` · `check-v22.py` | 전부 통과 |
+| `worker` `node --test test/` | **29/29** |
+| 스크린샷 | `downloads/nyang-v24-*.png` (390·430, 결과·유료 리포트·궤도·공유 카드) |
+
+문서: `docs/myeongri-literature-verification.md` · `docs/orbit-finding-and-ai-hybrid-design.md`
+
+---
+
+## 0-F. v2.5 (2026-11-26) — 일간 고양이 열 마리, 열 가지 포즈
+
+> 사용자 지적: "이거 왜 고양이가 다 정자세야? 내가 원하는건 다양한 포즈의 고양이야 지금은 뭔가 재미가없어"
+
+### 1. 무엇이 문제였나
+
+- 실제 화면이 쓰는 그림은 `public/cat-*-ink` 5장이 아니라 **`public/scene-<일간>.webp` 10장**이었습니다(무료 히어로 `#cat-art`, 유료 `#result-cat` 모두 `sceneSrc(art)`). 그런데 열 장이 배경만 다르고 고양이는 **모두 같은 정면 정자세**였습니다. `cat-*-ink` 5장은 `index.html` 의 초기 `src` 자리표시자로만 남아 있었습니다.
+
+### 2. 바뀐 것 — 자세만 다시 그렸다
+
+배경(큰 나무·매화·태양·등불·큰 산·밭·바위·보석함·파도·안갯길)과 화풍(화투×민화 목판 펜선·콩눈·흰 바탕에 검정 점박이·검정 꼬리)은 그대로 두고, 고양이 자세만 `images --edit` 로 다시 그려 넣었습니다.
+
+| 일간 | 캐릭터 | 새 포즈 |
+|---|---|---|
+| 甲木 `jia-tree` | 대장냥 | 소나무 줄기에 앞발을 짚고 온몸으로 기지개 |
+| 乙木 `yi-flower` | 눈치냥 | 뒷발로 서서 매화꽃잎·나비 쪽으로 두 앞발 뻗기 |
+| 丙火 `bing-sun` | 태양냥 | 붉은 해 앞에서 학 쪽으로 두 앞발 들고 깡충 점프 |
+| 丁火 `ding-candle` | 촛불냥 | 등불 옆에 배 깔고 엎드려 촛불 응시 |
+| 戊土 `wu-mountain` | 태산냥 | 능선 바위 위를 옆태로 걷기(꼬리 세움) |
+| 己土 `ji-field` | 정원냥 | 배추 이랑에 식빵 굽고 고개 갸웃 |
+| 庚金 `geng-rock` | 칼날냥 | 절벽에 앞발 짚고 서서 고개 돌리기 |
+| 辛金 `xin-gem` | 보석냥 | 보석을 끌어안고 배를 깔고 늘어지기 |
+| 壬水 `ren-sea` | 바다냥 | 부서지는 파도 앞을 폴짝 뛰어넘기 |
+| 癸水 `gui-mist` | 안개냥 | 안개비 속을 걷다 뒤돌아보기 |
+
+- **오행 5장**(`cat-*-ink`)도 같은 결로 다시 그려 알파 PNG+webp 로 교체했습니다. `cat-metal-ink` 만 불투명 크림 배경이었는데 다른 네 장과 같이 알파로 맞췄습니다.
+- **장면 10장**은 기존과 같은 `900×1125(4:5)` 에 RGBA 로 저장하고, 네 가장자리 3%에 알파 페더를 넣었습니다. 앱의 `mask-image`·공유 카드의 `featheredArt()` 와 겹쳐도 이음매가 생기지 않습니다.
+- 배경·구도는 건드리지 않았으므로 `DAY_ART`·`sceneSrc()`·`index.html`·`styles.css` 코드는 그대로입니다(자산만 교체).
+
+### 3. 검증 (2026-11-26)
+
+- 엔진·판정 회귀 `node tests/run-regression.mjs` → **122/122 통과**
+- `tools/check-engine.py` · `check-layout.py`(360/390/430 최소 여백 22.3px · 겹침 0 · 스크롤X 0) · `check-funnel.py` · `check-orbit.py` · `check-type.py` → **전부 OK**
+- 390×844 모바일 뷰포트에서 일간 10종 무료 결과 히어로를 캡처해 열 장의 포즈가 서로 겹치지 않고 한지 위에 프레임 없이 얹히는 것을 확인했습니다.
+
+---
+
+## 0-E. v2.4.1 (2026-11-25) — 일러스트 액자 제거 · 살아 있는 장면
+
+> 사용자 지적: "일러스트를 이렇게 칸안에 정적으로 배치한다고? … 카드 프레임을 쓰지말구 움직임 있게 역동적으로 해줘"
+
+### 1. 액자 없이 한지로 번지는 일러스트
+
+- **무료 결과 히어로**: `border`·`background`·`overflow: hidden` 사각 박스를 없앴습니다. `.scene` 이  `.screen` 패딩(34px)을 음수 마진으로 넘어 **화면 폭 100%**(390px 기기에서 정확히 390px)로 펼쳐지고, `.app` 의 팔각 클립과 `mask-image` 그라데이션(위 15%·아래 78%에서 사라짐, 좌우 17%)으로 가장자리가 종이에 스며듭니다.
+- **유료 결과 히어로**: 같운 `.scene` + `figcaption` 물상 캡션(`水 · 안개냥 · 비·이슬`)을 그림 아래 안개 위에 얹었습니다. 테두리·흰 판때기 없음.
+- **랜딩 히어로**: 같은 결로 14초 호흡(`catFloat`)만 더했습니다.
+
+### 2. 움직임
+
+| 위치 | 연출 |
+|---|---|
+| 히어로 일러스트 | `sceneBreathe` 17s — 1.0→1.035 스케일 + 4px 부유 |
+| 스크롤 | `--py`/`--pscale` 패럴랙스(프레임 단위 rAF, 최대 16px/1.03) |
+| 안개 | `scene__mist` 두 겹이 24s·33s 로 좌우로 흐름 (`screen` 블렌드) |
+| 오행 입자 | 수=비(20) · 목=꽃잎 · 화=불씨 · 토=티끌 · 금=금빛 — `paintScene()` 이 결과마다 다시 뿌림 |
+| 인연 궤도 | 링 3겹이 46s·68s·92s 로 회전(링마다 작은 달), 중심 `orbitPulse` 4.6s, 아바타 `meFloat`, 노드 링은 `nodeGlow` 로 숨 쉼 |
+| 궤도 배경 | 수묵 산·구름 SVG(`orbit__sky`)가 지도 아래에서 흐르고(46~62s), 액자 대신 라디얼 한지 후광 |
+
+`prefers-reduced-motion: reduce` 에서는 기존 전역 규칙이 모든 애니메이션을 0.001s 로 멈추고, 패럴랙스도 JS 에서 건너뜁니다.
+
+### 3. 공유 카드(9:16 · 1:1)
+
+- `featheredArt()` — 캔버스에 일러스트를 그린 뒤 `destination-out` 선형 그라데이션 4방향으로 **네 가장자리 알파를 지워** 한지로 페이드. 액자·사각 크롭 없음.
+- `paintPaper` 위에 8% 한지 워시를 덮어 그림 색을 카드 톤에 맞춤.
+- 그림 위 오른쪽 위에 붉은 리본(`팔자 고양이`), 오른쪽 아래 안개 자리에 얼굴 메달이 겹침.
+- 9:16 은 그림 폭 940px·560px 높이(고양이 머리끝부터), 1:1 은 1080px·282px(가슴 초상)로 각각 크롭 앵커를 다르게 둡니다.
+- 푸터(구분선·링크·안내)를 **카드 바닥에서 위로 계산**하도록 바꿔 링크·안내 문구가 겹치지 않습니다. 1:1 은 인스타 해시태그 대신 링크에 자리를 내줍니다.
+- 천기부적 PNG 도 같은 페더링으로 그림을 얹었습니다.
+
+### 4. 유지한 규격
+
+`analysisData`·`tests/ai-compare/`·Paperlogy(한자만 Song Myung)·본문 16px/1.75·최소 12px·바깥 팔각 테두리 안쪽 여백(21.3px+)·개인정보 미노출·`친구 초대 · 준비 중`·`PAYMENTS="off"` 그대로입니다.
+
+### 5. 검증 (2026-11-25)
+
+| 검사 | 결과 |
+|---|---|
+| `node tests/run-regression.mjs` | **122/122** |
+| `node tests/ai-compare/run.mjs --mode stub` | rule PASS · ai(stub) PASS |
+| `worker` `node --test test/worker.test.mjs` | **28/28** |
+| `tools/check-engine.py` | 기준값 전부 일치 · 오행 % 100 |
+| `tools/check-type.py` | 12px 미만 0 · 본문 16px/1.7 · 한자만 명조 |
+| `tools/check-layout.py` | 360·390·430 **최소 여백 20.9px** · 겹침 0 · 가로 스크롤 0 · 콘솔 에러 0 |
+| `tools/check-orbit.py` · `tools/check-funnel.py` | 전부 통과 |
+| 애니메이션 실측 | 일러스트·입자·안개·링·노드 transform 이 1.4초 사이 실제로 이동 |
+| 스크린샷 | `downloads/nyang-v24-dyn-free-390.png` · `-paid-390` · `-orbit-390` · `-card-9x16` |
+
+---
+
+## 0-2. v2.3 구조 개선 (2026-11-25)
 
 계산·판정·문장·렌더를 4층으로 나눴습니다. 화면 디자인과 팔자 고양이 10종, 브랜드 세계관은 그대로입니다.
 
@@ -540,11 +684,11 @@ apps/nyang-saju/
 │   └── manseryeok.LICENSE  # MIT
 ├── public/
 │   ├── cat-hero-hwatu.png / cat-hero-ink.png|.webp   # 랜딩·로딩
-│   ├── cat-wood-ink.png|.webp                         # 木 — 소나무·매화 아래
-│   ├── cat-fire-ink.png|.webp                         # 火 — 붉은 해 아래
-│   ├── cat-earth-ink.png|.webp                        # 土 — 둥근 산·황토 밭
-│   ├── cat-metal-ink.png|.webp                        # 金 — 바위·초승달
-│   └── cat-water-ink.png|.webp                        # 水 — 빗줄기·웅덩이
+│   ├── cat-wood-ink.png|.webp                         # 木 — 매화꽃잎 잡으려 발 뻗기 (v2.5 알파 컷아웃)
+│   ├── cat-fire-ink.png|.webp                         # 火 — 두 앞발 들고 깡충 점프 (v2.5)
+│   ├── cat-earth-ink.png|.webp                        # 土 — 논밭에 배 깔고 엎드리기 (v2.5)
+│   ├── cat-metal-ink.png|.webp                        # 金 — 옆태로 앉아 초승달 올려다보기 (v2.5)
+│   └── cat-water-ink.png|.webp                        # 水 — 물웅덩이 뛰어넘기 (v2.5)
 ├── legacy/                 # 이전 시안 고양이 원본 보관
 ├── hwatu-concept-1/2.png   # 확정 시안
 ├── compare-hwatu-landing.png / style1-indie.png / style2-receipt.png  # 이전 시안·비교용

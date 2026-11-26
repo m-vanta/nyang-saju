@@ -246,6 +246,17 @@
       }
     });
 
+    /* 도화 — 신살 표시일 뿐 판정이 아니다. 렌더 층에서 만들지 않고 여기서 한 번만 낸다.
+       (v2.4: render/select.js 의 FLAG.DOHWA 합성을 이곳으로 옮겼다) */
+    if (chart.dohwa) {
+      f.push({
+        id: 'FLAG.DOHWA', ruleId: 'FLAG-05', domain: 'nature',
+        claim: { subject: '도화', predicate: '지지에 앉음', value: true },
+        display: { short: '도화', long: '도화가 앉아 있어요.' },
+        evidence: [], conditions: [{ field: 'dohwa', op: '==', value: true }], polarity: 'neutral'
+      });
+    }
+
     if (chart.flags.hourUnknown) {
       f.push({
         id: 'HOUR.UNKNOWN', ruleId: 'FLAG-01', domain: 'nature',
@@ -371,9 +382,155 @@
     return f;
   }
 
+  /* ---------------- analysisData → 사실 Finding ----------------
+     analysisData 는 사실의 묶음이고, 화면·비교 하네스는 Finding 을 통해서만 그것을 인용한다.
+     여기서도 판정(격 확정·강약·용신)은 만들지 않는다. 값은 전부 사실 그대로다. */
+
+  var GOD_GROUP_KO = { peer: '비겁', output: '식상', wealth: '재성', power: '관성', resource: '인성' };
+
+  function analysisFindings(a) {
+    var f = [];
+    if (!a) return f;
+    var mc = a.monthCommand, dm = a.dayMaster;
+
+    f.push({
+      id: 'AN.MONTH.TYPE.' + mc.monthType, ruleId: 'ANA-01', domain: 'nature',
+      claim: { subject: '월지', predicate: '분류', value: mc.monthType },
+      display: { short: '월령 ' + mc.branch + ' · ' + mc.monthType, long: '월지는 ' + mc.branch + '로 ' + mc.monthType + '이고 계절은 ' + mc.season + '이에요.' },
+      evidence: [{ pillar: 'month', slot: 'branch', char: mc.branch, elem: mc.branchElem }],
+      conditions: [{ field: 'monthType', op: '==', value: mc.monthType }], polarity: 'neutral'
+    });
+
+    f.push({
+      id: 'AN.SEASON.RANK.' + mc.wangXiang[dm.elem], ruleId: 'ANA-02', domain: 'nature',
+      claim: { subject: '일간의 계절 자리', value: mc.wangXiang[dm.elem] },
+      display: { short: '계절 ' + mc.wangXiang[dm.elem], long: '일간 ' + dm.elem + '은 ' + mc.season + '에 ' + mc.wangXiang[dm.elem] + ' 자리예요.' },
+      evidence: [{ pillar: 'month', slot: 'branch', char: mc.branch, elem: mc.branchElem }],
+      conditions: [{ field: 'seasonRank', op: '==', value: mc.wangXiang[dm.elem] }], polarity: 'neutral'
+    });
+
+    var dr = a.deukryeong;
+    f.push({
+      id: 'AN.DEUKRYEONG.ELEMENT.' + (dr.byElementCycle.supported ? 'YES' : 'NO'), ruleId: 'ANA-03', domain: 'nature',
+      claim: { subject: '득령 · 오행 생조', value: dr.byElementCycle.relation },
+      display: { short: '월령 ' + dr.byElementCycle.relation, long: '월지 오행은 일간에게 ' + dr.byElementCycle.relation + '예요.' },
+      evidence: [], conditions: [{ field: 'deukryeong.byElementCycle', op: '==', value: dr.byElementCycle.relation }], polarity: 'neutral'
+    });
+    f.push({
+      id: 'AN.DEUKRYEONG.SEASON.' + dr.bySeasonRank.rank, ruleId: 'ANA-04', domain: 'nature',
+      claim: { subject: '득령 · 왕상휴수사', value: dr.bySeasonRank.rank },
+      display: { short: '왕상휴수사 ' + dr.bySeasonRank.rank, long: '계절 표에서 일간은 ' + dr.bySeasonRank.rank + '예요.' },
+      evidence: [], conditions: [{ field: 'deukryeong.bySeasonRank', op: '==', value: dr.bySeasonRank.rank }], polarity: 'neutral'
+    });
+    f.push({
+      id: 'AN.DEUKRYEONG.STAGE.' + dr.byStage.stage, ruleId: 'ANA-05', domain: 'nature',
+      claim: { subject: '득령 · 12운성', value: dr.byStage.stage },
+      display: { short: '월지 12운성 ' + dr.byStage.stage, long: '월지에서 일간의 12운성은 ' + dr.byStage.stage + '이에요.' },
+      evidence: [], conditions: [{ field: 'deukryeong.byStage', op: '==', value: dr.byStage.stage }], polarity: 'neutral'
+    });
+    f.push({
+      id: 'AN.DEUKRYEONG.TENGOD.' + dr.byMainQiTenGod.tenGod, ruleId: 'ANA-06', domain: 'nature',
+      claim: { subject: '득령 · 본기 십성', value: dr.byMainQiTenGod.tenGod },
+      display: { short: '월령 본기 ' + dr.byMainQiTenGod.tenGod, long: '월지 본기는 일간에게 ' + dr.byMainQiTenGod.tenGod + '(' + GOD_GROUP_KO[dr.byMainQiTenGod.group] + ')이에요.' },
+      evidence: [], conditions: [{ field: 'deukryeong.byMainQiTenGod', op: '==', value: dr.byMainQiTenGod.tenGod }], polarity: 'neutral'
+    });
+
+    var dj = a.deukji;
+    f.push({
+      id: 'AN.DEUKJI.ELEMENT.' + (dj.byElementCycle.supported ? 'YES' : 'NO'), ruleId: 'ANA-07', domain: 'nature',
+      claim: { subject: '득지 · 오행 생조', value: dj.byElementCycle.relation },
+      display: { short: '일지 ' + dj.byElementCycle.relation, long: '일지 오행은 일간에게 ' + dj.byElementCycle.relation + '예요.' },
+      evidence: [], conditions: [{ field: 'deukji.byElementCycle', op: '==', value: dj.byElementCycle.relation }], polarity: 'neutral'
+    });
+    f.push({
+      id: 'AN.DEUKJI.STAGE.' + dj.byStage.stage, ruleId: 'ANA-08', domain: 'nature',
+      claim: { subject: '득지 · 12운성', value: dj.byStage.stage },
+      display: { short: '일지 12운성 ' + dj.byStage.stage, long: '일지에서 일간의 12운성은 ' + dj.byStage.stage + '이에요.' },
+      evidence: [], conditions: [{ field: 'deukji.byStage', op: '==', value: dj.byStage.stage }], polarity: 'neutral'
+    });
+    f.push({
+      id: 'AN.DEUKJI.ROOT.' + (dj.rootGrade.value || 'NONE'), ruleId: 'ANA-09', domain: 'nature',
+      claim: { subject: '득지 · 통근', value: dj.rootGrade.value },
+      display: { short: '일지 통근 ' + (dj.rootGrade.value || '없음'), long: dj.rootGrade.value ? ('일지에 ' + dj.rootGrade.value + ' 통근이 있어요.') : '일지에는 통근이 없어요.' },
+      evidence: [], conditions: [{ field: 'deukji.rootGrade', op: '==', value: dj.rootGrade.value }], polarity: 'neutral'
+    });
+
+    var roots = a.roots || [];
+    f.push({
+      id: 'AN.ROOTS.COUNT.' + roots.length, ruleId: 'ANA-10', domain: 'nature',
+      claim: { subject: '통근', predicate: '개수', value: roots.length },
+      display: { short: '통근 ' + roots.length + '개', long: '일간과 같은 오행의 지장간이 ' + roots.length + '개 있어요.' },
+      evidence: [], conditions: [{ field: 'roots', op: 'length', value: roots.length }], polarity: 'neutral'
+    });
+    var heavy = roots.filter(function (r) { return r.rootGrade === '중'; });
+    if (heavy.length) {
+      f.push({
+        id: 'AN.ROOTS.HEAVY.' + heavy.length, ruleId: 'ANA-11', domain: 'nature',
+        claim: { subject: '통근', predicate: '무거운 뿌리', value: heavy.length },
+        display: { short: '무거운 뿌리 ' + heavy.length, long: '장생·록·왕 자리의 뿌리가 ' + heavy.length + '개 있어요.' },
+        evidence: [], conditions: [{ field: 'roots.heavy', op: '==', value: heavy.length }], polarity: 'neutral'
+      });
+    }
+
+    Object.keys(a.deukse.groupCountsByHiddenAll).forEach(function (g) {
+      var n = a.deukse.groupCountsByHiddenAll[g];
+      if (!n) return;
+      f.push({
+        id: 'AN.DEUKSE.GROUP.' + g + '.' + n, ruleId: 'ANA-12', domain: 'nature',
+        claim: { subject: GOD_GROUP_KO[g], predicate: '지장간 전체 개수', value: n },
+        display: { short: GOD_GROUP_KO[g] + ' ' + n + '개(지장간 전체)', long: '지장간까지 세면 ' + GOD_GROUP_KO[g] + '이 ' + n + '개예요. 개수는 사실이고 강약 판정이 아니에요.' },
+        evidence: [], conditions: [{ field: 'deukse.group.' + g, op: '==', value: n }], polarity: 'neutral'
+      });
+    });
+
+    var gk = a.geokguk;
+    (gk.candidates || []).forEach(function (c) {
+      var label = c.id.indexOf('GEOK.BONGGI.') === 0 ? '본기 후보'
+        : (c.id.indexOf('GEOK.TUTUL.') === 0 ? (c.transparent ? '투출 후보' : '월지 지장간') : '회국 후보');
+      f.push({
+        id: 'AN.' + c.id, ruleId: 'ANA-13', domain: 'nature',
+        claim: { subject: label, value: c.god || c.basis },
+        display: { short: label + ' ' + (c.god || c.id.split('.').pop()), long: c.basis + (c.decided ? '' : ' · 확정하지 않음') },
+        evidence: [], conditions: [{ field: 'geokguk.candidates', op: 'includes', value: c.id }], polarity: 'neutral'
+      });
+    });
+    f.push({
+      id: 'AN.GEOK.AGREEMENT.' + gk.agreement, ruleId: 'ANA-14', domain: 'nature',
+      claim: { subject: '격 후보 일치', value: gk.agreement },
+      display: {
+        short: '격 후보 ' + ({ same: '일치', partial: '일부 일치', differs: '불일치', none: '투출 없음' }[gk.agreement] || gk.agreement),
+        long: '본기 후보와 투출 후보의 십성 비교는 ' + gk.agreement + '예요. 격은 확정하지 않아요.'
+      },
+      evidence: [], conditions: [{ field: 'geokguk.agreement', op: '==', value: gk.agreement }], polarity: 'neutral'
+    });
+
+    var conflict = (a.hapchong || []).filter(function (h) { return h.kind === '천간합' || h.kind === '육합'; }).length &&
+      (a.hapchong || []).filter(function (h) { return h.kind === '천간충' || h.kind === '육충'; }).length;
+    if (conflict) {
+      f.push({
+        id: 'AN.HAPCHONG.CONFLICT', ruleId: 'ANA-15', domain: 'nature',
+        claim: { subject: '합과 충', predicate: '동시 성립', value: true },
+        display: { short: '합·충 동시', long: '합과 충이 같은 명식에 같이 있어요. 어느 한쪽만 골라 말하지 않아요.' },
+        evidence: [], conditions: [{ field: 'hapchong.conflict', op: '==', value: true }], polarity: 'neutral'
+      });
+    }
+
+    (a.earlyQiCandidates || []).forEach(function (e) {
+      f.push({
+        id: 'AN.EARLYQI.' + e.branch + '.' + e.stem, ruleId: 'ANA-16', domain: 'nature',
+        claim: { subject: '월률분야', predicate: '초기 참고값', value: e.stem },
+        display: { short: '분야 참고 ' + e.stem + ' ' + e.days + '일', long: e.branch + '월 초기 ' + e.days + '일을 ' + e.stem + '으로 보는 표가 있어요. 참고값이고 판정에 쓰지 않아요.' },
+        evidence: [], conditions: [{ field: 'earlyQi', op: 'includes', value: e.stem }], polarity: 'neutral'
+      });
+    });
+
+    return f;
+  }
+
   global.NyangRules = {
     core: coreFindings,
     period: periodFindings,
+    analysis: analysisFindings,
     relOf: relOf,
     groupLabel: groupLabel
   };

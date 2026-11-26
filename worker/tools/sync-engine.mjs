@@ -24,6 +24,7 @@ const FILES = [
   ['vendor/manseryeok.js', 'manseryeok.js'],
   ['src/domain/tables.js', 'tables.js'],
   ['src/domain/chart.js', 'chart.js'],
+  ['src/domain/analysis.js', 'analysis.js'],
   ['src/domain/period.js', 'period.js'],
   ['src/rules/findings.js', 'findings.js'],
   ['copy.js', 'copy.js'],
