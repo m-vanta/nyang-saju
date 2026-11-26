@@ -82,6 +82,43 @@ node tests/ai-compare/run.mjs --mode score --in out/<runId>
 
 ---
 
+## 0-F. v2.5 (2026-11-26) — 일간 고양이 열 마리, 열 가지 포즈
+
+> 사용자 지적: "이거 왜 고양이가 다 정자세야? 내가 원하는건 다양한 포즈의 고양이야 지금은 뭔가 재미가없어"
+
+### 1. 무엇이 문제였나
+
+- 실제 화면이 쓰는 그림은 `public/cat-*-ink` 5장이 아니라 **`public/scene-<일간>.webp` 10장**이었습니다(무료 히어로 `#cat-art`, 유료 `#result-cat` 모두 `sceneSrc(art)`). 그런데 열 장이 배경만 다르고 고양이는 **모두 같은 정면 정자세**였습니다. `cat-*-ink` 5장은 `index.html` 의 초기 `src` 자리표시자로만 남아 있었습니다.
+
+### 2. 바뀐 것 — 자세만 다시 그렸다
+
+배경(큰 나무·매화·태양·등불·큰 산·밭·바위·보석함·파도·안갯길)과 화풍(화투×민화 목판 펜선·콩눈·흰 바탕에 검정 점박이·검정 꼬리)은 그대로 두고, 고양이 자세만 `images --edit` 로 다시 그려 넣었습니다.
+
+| 일간 | 캐릭터 | 새 포즈 |
+|---|---|---|
+| 甲木 `jia-tree` | 대장냥 | 소나무 줄기에 앞발을 짚고 온몸으로 기지개 |
+| 乙木 `yi-flower` | 눈치냥 | 뒷발로 서서 매화꽃잎·나비 쪽으로 두 앞발 뻗기 |
+| 丙火 `bing-sun` | 태양냥 | 붉은 해 앞에서 학 쪽으로 두 앞발 들고 깡충 점프 |
+| 丁火 `ding-candle` | 촛불냥 | 등불 옆에 배 깔고 엎드려 촛불 응시 |
+| 戊土 `wu-mountain` | 태산냥 | 능선 바위 위를 옆태로 걷기(꼬리 세움) |
+| 己土 `ji-field` | 정원냥 | 배추 이랑에 식빵 굽고 고개 갸웃 |
+| 庚金 `geng-rock` | 칼날냥 | 절벽에 앞발 짚고 서서 고개 돌리기 |
+| 辛金 `xin-gem` | 보석냥 | 보석을 두 앞발로 감싸 쥐기 |
+| 壬水 `ren-sea` | 바다냥 | 부서지는 파도 앞을 폴짝 뛰어넘기 |
+| 癸水 `gui-mist` | 안개냥 | 안개비 속을 걷다 뒤돌아보기 |
+
+- **오행 5장**(`cat-*-ink`)도 같은 결로 다시 그려 알파 PNG+webp 로 교체했습니다. `cat-metal-ink` 만 불투명 크림 배경이었는데 다른 네 장과 같이 알파로 맞췄습니다.
+- **장면 10장**은 기존과 같은 `900×1125(4:5)` 에 RGBA 로 저장하고, 네 가장자리 3%에 알파 페더를 넣었습니다. 앱의 `mask-image`·공유 카드의 `featheredArt()` 와 겹쳐도 이음매가 생기지 않습니다.
+- 배경·구도는 건드리지 않았으므로 `DAY_ART`·`sceneSrc()`·`index.html`·`styles.css` 코드는 그대로입니다(자산만 교체).
+
+### 3. 검증 (2026-11-26)
+
+- 엔진·판정 회귀 `node tests/run-regression.mjs` → **122/122 통과**
+- `tools/check-engine.py` · `check-layout.py`(360/390/430 최소 여백 22.3px · 겹침 0 · 스크롤X 0) · `check-funnel.py` · `check-orbit.py` · `check-type.py` → **전부 OK**
+- 390×844 모바일 뷰포트에서 일간 10종 무료 결과 히어로를 캡처해 열 장의 포즈가 서로 겹치지 않고 한지 위에 프레임 없이 얹히는 것을 확인했습니다.
+
+---
+
 ## 0-E. v2.4.1 (2026-11-25) — 일러스트 액자 제거 · 살아 있는 장면
 
 > 사용자 지적: "일러스트를 이렇게 칸안에 정적으로 배치한다고? … 카드 프레임을 쓰지말구 움직임 있게 역동적으로 해줘"
@@ -647,11 +684,11 @@ apps/nyang-saju/
 │   └── manseryeok.LICENSE  # MIT
 ├── public/
 │   ├── cat-hero-hwatu.png / cat-hero-ink.png|.webp   # 랜딩·로딩
-│   ├── cat-wood-ink.png|.webp                         # 木 — 소나무·매화 아래
-│   ├── cat-fire-ink.png|.webp                         # 火 — 붉은 해 아래
-│   ├── cat-earth-ink.png|.webp                        # 土 — 둥근 산·황토 밭
-│   ├── cat-metal-ink.png|.webp                        # 金 — 바위·초승달
-│   └── cat-water-ink.png|.webp                        # 水 — 빗줄기·웅덩이
+│   ├── cat-wood-ink.png|.webp                         # 木 — 매화꽃잎 잡으려 발 뻗기 (v2.5 알파 컷아웃)
+│   ├── cat-fire-ink.png|.webp                         # 火 — 두 앞발 들고 깡충 점프 (v2.5)
+│   ├── cat-earth-ink.png|.webp                        # 土 — 논밭에 배 깔고 엎드리기 (v2.5)
+│   ├── cat-metal-ink.png|.webp                        # 金 — 옆태로 앉아 초승달 올려다보기 (v2.5)
+│   └── cat-water-ink.png|.webp                        # 水 — 물웅덩이 뛰어넘기 (v2.5)
 ├── legacy/                 # 이전 시안 고양이 원본 보관
 ├── hwatu-concept-1/2.png   # 확정 시안
 ├── compare-hwatu-landing.png / style1-indie.png / style2-receipt.png  # 이전 시안·비교용
