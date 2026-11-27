@@ -262,12 +262,15 @@ function renderTechMd(pkg) {
   L.push('');
   L.push('## 실험군');
   L.push('');
-  L.push('| 실험군 | 엔진 | 요청 모델 | 응답 모델 | 프롬프트 | 입력 경계 |');
-  L.push('|---|---|---|---|---|---|');
+  L.push('| 실험군 | 엔진 | 요청 모델 | 응답 모델 | effort | max_tokens | 프롬프트 | 입력 경계 |');
+  L.push('|---|---|---|---|---|---|---|---|');
   pkg.arms.forEach((a) => {
     L.push('| ' + a.arm + ' | ' + (a.engine || '—') + ' | ' + (a.modelRequested || '—') + ' | ' + (a.modelResponse || '—') + ' | ' +
+      (a.effort || '—') + ' | ' + (a.maxTokens == null ? '—' : a.maxTokens) + ' | ' +
       (a.promptVersion || '—') + ' `' + (a.promptHash || '') + '` | ' + (a.inputBoundary || '—') + ' |');
   });
+  L.push('');
+  L.push('- temperature·top_p·top_k 는 요청하지 않는다(Claude Opus 5.5 는 보내면 HTTP 400). thinking 은 항상 켜져 있고, 응답은 `type==="text"` 블록만 읽으며 `max_tokens` 는 thinking+본문 합산 상한이다.');
   L.push('');
   L.push('## 성공률·실패율 (모수 = 요청 건수 — 실패·스킵을 빼지 않는다)');
   L.push('');
@@ -331,6 +334,10 @@ function renderTechMd(pkg) {
   } else {
     L.push('- 기록 없음');
   }
+  if (pkg.abort) {
+    L.push('- **중단됨**: 공통 설정 오류 HTTP ' + (pkg.abort.httpStatus == null ? '—' : pkg.abort.httpStatus) +
+      ' (' + (pkg.abort.errorType || 'http') + ') — ' + (pkg.abort.message || '') + '. 남은 요청은 보내지 않고 notAttempted 로 기록했다.');
+  }
   L.push('');
   L.push('## 비용 합계');
   L.push('');
@@ -381,9 +388,12 @@ export function buildBlind(input) {
       label: sample && sample.label,
       modelRequested: sample && sample.model,
       modelResponse: sample && sample.responseModel,
+      /* Opus 5.5 요청 설정 — 실험군 간에 같아야 한다(모델·effort·max_tokens) */
+      effort: sample && sample.settings ? (sample.settings.effort || null) : null,
+      maxTokens: sample && sample.settings && sample.settings.maxTokens != null ? sample.settings.maxTokens : null,
       promptVersion: sample && sample.prompt && sample.prompt.promptVersion,
       promptHash: sample && sample.prompt && sample.prompt.hash,
-      settings: (sample && sample.settings) || { temperature: 0, maxTokens: null },
+      settings: (sample && sample.settings) || { effort: 'medium', maxTokens: null },
       inputBoundary: sample && sample.inputBoundary,
       contentOrigin: sample && sample.contentOrigin ? sample.contentOrigin : null
     };
@@ -456,6 +466,8 @@ export function buildBlind(input) {
     arms: arms.map((arm) => Object.assign({ arm }, key.arms[arm])),
     /* 성공률·실패율은 요청 건수 모수 — 실패·스킵을 빼지 않는다 */
     successByArm: input.successByArm || {},
+    settings: input.settings || null,
+    abort: input.abort || null,
     safety: input.safety || null,
     preflight: input.preflight || null,
     cost: input.cost || { totalUsdKnown: 0, unknownPricingCalls: 0 },

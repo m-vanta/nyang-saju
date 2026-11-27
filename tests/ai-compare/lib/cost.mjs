@@ -160,6 +160,9 @@ export function costRecord(input) {
     model: requestedModel,
     requestedModel,
     responseModel,
+    /* Opus 5.5 요청 설정 — 실험군이 모두 같아야 한다(모델·effort·max_tokens) */
+    effort: input.effort || null,
+    maxTokens: input.maxTokens == null ? null : input.maxTokens,
     usage,
     usd: cost.usd,
     krw: cost.krw,

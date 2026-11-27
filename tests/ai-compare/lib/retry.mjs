@@ -13,6 +13,10 @@
    실패도 기록한다 (리뷰 P0-3-5·6)
      callFn 이 던진 오류에 usage·ms·model·httpStatus·errorType·truncated 가 붙어 있으면
      그대로 비용 기록에 남긴다. JSON 파싱이 실패해도 토큰·비용이 사라지지 않는다.
+
+   출력 잘림은 성공이 아니다
+     결과에 truncated:true 가 실려 오면(엔진이 던지지 못한 경우의 방어) 검증을 통과했더라도
+     ok:false · stopped:'truncated' 로 끝낸다. 잘린 문서는 '유효한 초안'이 아니다.
    ========================================================================== */
 import { validate } from './validate.mjs';
 import { costRecord } from './cost.mjs';
@@ -32,6 +36,8 @@ function errorRecord(p, attempt, e) {
     httpStatus: e && e.httpStatus != null ? e.httpStatus : null,
     stopReason: (e && e.stopReason) || null,
     truncated: !!(e && e.truncated),
+    effort: p.effort || null,
+    maxTokens: p.maxTokens || null,
     promptHash: p.promptHash || null,
     promptFile: p.promptFile || null,
     note: 'error: ' + ((e && e.code) || (e && e.errorType) || 'unknown')
@@ -72,6 +78,7 @@ export async function runArm(p) {
           arm: p.arm, fixture: p.ctx.fixture.id, attempt, phase: 'blocked',
           requestedModel: p.model, usage: {}, ms: 0, ok: false,
           estimatedMaxUsd: est ? est.usd : null,
+          effort: p.effort || null, maxTokens: p.maxTokens || null,
           promptHash: p.promptHash || null, promptFile: p.promptFile || null,
           note: '호출 전 예상 비용 초과 차단: ' + chk.reason
         }));
@@ -103,7 +110,13 @@ export async function runArm(p) {
         attempts: attempt,
         records,
         ok: false,
-        error: { errorType: rec.errorType, httpStatus: rec.httpStatus, truncated: rec.truncated, message: e && e.message },
+        /* 잘린 응답·파싱 실패 응답도 실행기가 보존할 수 있게 원문과 부분 객체를 넘긴다 */
+        error: {
+          errorType: rec.errorType, httpStatus: rec.httpStatus, truncated: rec.truncated,
+          message: e && e.message,
+          rawText: e && e.rawText ? String(e.rawText) : null,
+          partialDoc: (e && e.partialDoc) || null
+        },
         feedback
       };
     }
@@ -123,6 +136,8 @@ export async function runArm(p) {
       httpStatus: result.httpStatus == null ? null : result.httpStatus,
       stopReason: result.stopReason || null,
       truncated: !!result.truncated,
+      effort: result.effort || p.effort || null,
+      maxTokens: result.maxTokens || p.maxTokens || null,
       promptHash: p.promptHash || null,
       promptFile: p.promptFile || null,
       note: result.estimated ? 'estimated-usage' : null
@@ -132,6 +147,15 @@ export async function runArm(p) {
 
     if (!best || validation.violations.length < best.validation.violations.length) {
       best = { doc: result.doc, validation, attempt };
+    }
+    /* 잘린 출력은 파싱·검증을 통과해도 성공이 아니다 — 초안으로도 쓰지 않는다. */
+    if (result.truncated) {
+      return {
+        doc: result.doc || null, validation, attempts: attempt, records, ok: false,
+        stopped: 'truncated',
+        error: { errorType: 'truncated', httpStatus: result.httpStatus == null ? null : result.httpStatus, truncated: true, message: '출력이 max_tokens 에서 잘렸습니다.' },
+        feedback
+      };
     }
     if (!validation.violations.length) {
       return { doc: result.doc, validation, attempts: attempt, records, ok: true, feedback: [], truncated: !!result.truncated };

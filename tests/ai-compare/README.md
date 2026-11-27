@@ -62,6 +62,23 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 
 종료 코드: 하네스·검증기 자기시험이 실패하면 1, 예산·비교쌍 설정 오류는 2.
 
+## 모델 요청 규격 (Claude Opus 5.5)
+
+`platform.claude.com/docs/en/models/opus-5-5/migration-guide` 기준. AI 실험군 B·C·D·E 는 **모델·effort·max_tokens 가 모두 같다** — 실험 축은 '무엇을 주는가' 하나뿐이다.
+
+| 항목 | 값 | 이유 |
+|---|---|---|
+| model | `claude-opus-5-5` | 고정 ID(날짜 접미사 없음) |
+| temperature · top_p · top_k | **보내지 않음** | Opus 5.5 는 보내면 HTTP 400 |
+| output_config.effort | `medium` (명시) | thinking 깊이를 정하는 유일한 파라미터. 기본값도 medium 이지만 기록·재현을 위해 명시한다 |
+| max_tokens | `16000` | **thinking + 본문 합산** 상한. 8000 은 thinking 이 본문 자리를 먹으면 잘린다 |
+| thinking | 보내지 않음(항상 켜짐) | `thinking: {type:'disabled'}`·수동 budget 은 400 |
+
+- 응답 `content` 의 첫 블록이 `thinking` 일 수 있다 → 위치(`content[0].text`)로 읽지 않고 `type === 'text'` 블록만 모아 읽는다(`lib/engines/ai.mjs` `extractText`).
+- `stop_reason: 'max_tokens'` 는 **정상 생성 성공으로 세지 않는다** — 파싱이 돼도 `ok:false`·`truncated:true`·최종 실패로 집계하고, E 는 그 D 초안을 유효 초안으로 받지 않는다. 잘린 응답의 `rawText` 전문과 파싱된 부분 객체(`partialDoc`)는 자르지 않고 `calls/*.json`·`docs.json` 에 보존한다.
+- 첫 실호출이 HTTP 400·401·403·404(요청·인증·모델 설정 오류)로 실패하면 남은 호출을 보내지 않고 멈춘다(`lib/abort.mjs`). 미시도 건은 `skipped:'notAttempted'` 로 기록하고 오류 요약과 함께 종료 코드 2로 끝난다. 5xx·429·네트워크 오류는 다음 호출이 성공할 수 있으므로 계속한다.
+- 기록 위치: `calls/<픽스처>-<실험군>-a<시도>.json` 의 `request`, `cost.json`·`score.json` 의 `settings`, `blind-key.json`·`tech-eval.md` 의 실험군 설정.
+
 ## 무엇을 재는가
 
 | 지표 | 정의 | 계산 | gate |

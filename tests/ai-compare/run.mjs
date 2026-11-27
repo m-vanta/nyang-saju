@@ -47,7 +47,8 @@ import { loadEngine } from './lib/load.mjs';
 import { buildContext } from './lib/readings.mjs';
 import { ruleDoc } from './lib/engines/rule.mjs';
 import { stubDoc, probeDocs } from './lib/engines/stub.mjs';
-import { aiDoc, apiKey, MAX_TOKENS } from './lib/engines/ai.mjs';
+import { aiDoc, apiKey, MAX_TOKENS, EFFORT, requestBody, extractText, countThinkingBlocks, REJECTED_SAMPLING_PARAMS } from './lib/engines/ai.mjs';
+import { shouldAbortOn, abortInfo, notAttemptedRow, NOT_ATTEMPTED, COMMON_CONFIG_ERROR_STATUSES } from './lib/abort.mjs';
 import { evidencePool, ARMS, ARM_KEYS } from './lib/facts.mjs';
 import { validate } from './lib/validate.mjs';
 import { measure, aggregate, successStage } from './lib/metrics.mjs';
@@ -70,7 +71,18 @@ const APP_DIR = resolve(HERE, '../..');
 const KB_DOC = resolve(APP_DIR, 'docs/myeongri-knowledge-base.md');
 const ANALYSIS_DOC = resolve(APP_DIR, 'docs/qa-original-analysis-data.json');
 
-const SETTINGS = { temperature: 0, maxTokens: MAX_TOKENS };
+/* 모든 AI 실험군(B·C·D·E) 공통 설정 — temperature 는 보내지 않는다(Opus 5.5 는 400). */
+const SETTINGS = { effort: EFFORT, maxTokens: MAX_TOKENS };
+const RUN_SETTINGS = {
+  modelEnv: process.env.NYANG_COMPARE_MODEL || null,
+  effort: EFFORT,
+  maxTokens: MAX_TOKENS,
+  anthropicVersion: '2026-10-21',
+  samplingParams: 'temperature·top_p·top_k 전송 안 함 (Opus 5.5 는 보내면 HTTP 400)',
+  thinking: 'adaptive 항상 켜짐 · 응답은 type==="text" 블록만 읽음 · max_tokens 는 thinking+본문 합산',
+  truncation: 'stop_reason:max_tokens 는 잘림으로 기록하고 성공·유효 초안으로 세지 않는다',
+  abortRemaining: '첫 실호출이 HTTP ' + COMMON_CONFIG_ERROR_STATUSES.join('/') + ' 로 실패하면 남은 호출 중단 · 미시도는 ' + NOT_ATTEMPTED
+};
 
 function args(argv) {
   const out = {
@@ -209,6 +221,8 @@ async function main() {
   const callLog = [];
   let determinism = true;
   let skipped = 0;
+  /* 첫 실호출이 공통 설정 오류(HTTP 400·401·403·404)로 실패하면 채운다 — 이후 요청은 보내지 않는다. */
+  let abort = null;
 
   mkdirSync(outDir, { recursive: true });
   mkdirSync(resolve(outDir, 'calls'), { recursive: true });
@@ -279,6 +293,18 @@ async function main() {
       const pool = evidencePool(ctx, arm, kbList);
       const base = { fixture, arm, ctx, pool };
 
+      /* 공통 설정 오류로 중단한 뒤 — 보내지 않은 요청은 notAttempted 로 남긴다 */
+      if (abort) {
+        skipped += 1;
+        rows.push(Object.assign(base, Object.assign(notAttemptedRow(abort), {
+          doc: null, validation: null, metrics: null,
+          engine: arm === 'A' ? 'rule' : 'ai-' + arm.toLowerCase(), model: arm === 'A' ? null : opt.model,
+          responseModel: null, label: ARMS[arm].label,
+          inputBoundary: ARMS[arm].inputs.join('+'), settings: arm === 'A' ? { effort: null, maxTokens: null } : SETTINGS, prompt: null
+        })));
+        continue;
+      }
+
       if (arm === 'A') {
         const doc = ruleDoc(ctx, pool);
         const validation = validate(doc, ctx, { arm, pool, policy: POLICY });
@@ -293,7 +319,7 @@ async function main() {
             byParagraph: doc.meta.contentOriginParagraphs,
             definitions: doc.meta.contentOriginDefinitions
           } : null,
-          settings: { temperature: 0 }, prompt: null
+          settings: { effort: null, maxTokens: null }, prompt: null
         }));
         continue;
       }
@@ -331,18 +357,22 @@ async function main() {
         callFn = async ({ attempt, feedback }) => {
           const entry = {
             fixture: fixture.id, arm, attempt, live: true,
-            requestedModel: opt.model, promptHash: prompt.hash,
+            requestedModel: opt.model, effort: EFFORT, maxTokens: SETTINGS.maxTokens,
+            promptHash: prompt.hash,
             promptSystem: prompt.system, promptUser: prompt.user,
             feedback: feedback || []
           };
           try {
             const r = await aiDoc(arm, ctx, {
               pool, draftDoc: arm === 'E' ? draftD : null, feedback, key, dir: APP_DIR,
-              temperature: 0, model: opt.model, maxTokens: SETTINGS.maxTokens, prompt
+              effort: EFFORT, model: opt.model, maxTokens: SETTINGS.maxTokens, prompt
             });
             Object.assign(entry, {
               ok: true, usage: r.usage, responseModel: r.responseModel, ms: r.ms,
               stopReason: r.stopReason, truncated: r.truncated, httpStatus: r.httpStatus,
+              thinkingBlocks: r.thinkingBlocks == null ? null : r.thinkingBlocks,
+              /* 성공 응답도 전문을 남긴다 — 요약·절단은 실패 원인을 숨긴다 */
+              rawText: String(r.rawText || ''),
               rawTextPreview: String(r.rawText || '').slice(0, 1200)
             });
             callLog.push(entry);
@@ -353,8 +383,10 @@ async function main() {
               usage: e.usage || null, responseModel: e.responseModel || null, ms: e.ms || 0,
               stopReason: e.stopReason || null, truncated: !!e.truncated, message: e.message,
               rawTextPreview: e.rawText ? String(e.rawText).slice(0, 1200) : null,
-              /* 실패한 응답 원문은 자르지 않고 보존한다(삭제·요약 금지) */
-              rawText: e.rawText ? String(e.rawText) : null
+              /* 실패·잘림 응답은 원문 전문과 파싱된 부분 객체를 자르지 않고 보존한다 */
+              rawText: e.rawText ? String(e.rawText) : null,
+              partialDoc: e.partialDoc || null,
+              parseError: e.parseError || null
             });
             callLog.push(entry);
             throw e;
@@ -369,7 +401,7 @@ async function main() {
             requestedModel: opt.model, responseModel: opt.model, promptHash: prompt.hash,
             promptSystem: prompt.system, promptUser: prompt.user, feedback: [],
             ok: true, usage, ms: 0, stopReason: 'end_turn', truncated: false, httpStatus: null,
-            rawTextPreview: JSON.stringify(doc).slice(0, 1200)
+            rawText: JSON.stringify(doc), rawTextPreview: JSON.stringify(doc).slice(0, 1200)
           };
           callLog.push(entry);
           return { doc, usage, ms: 0, requestedModel: opt.model, responseModel: opt.model, model: opt.model, estimated: true };
@@ -379,6 +411,7 @@ async function main() {
       const res = await runArm({
         arm, ctx, pool, policy: POLICY, callFn,
         maxRetries: opt.maxRetries, budget, model: opt.model,
+        effort: EFFORT, maxTokens: SETTINGS.maxTokens,
         prompt: prompt.system + prompt.user,
         promptHash: prompt.hash,
         promptFile,
@@ -387,6 +420,14 @@ async function main() {
           return { usd: est.usd, inputTokens: est.inputTokens, maxOutputTokens: est.maxOutputTokens, attempt };
         }
       });
+
+      /* 첫 실호출이 공통 설정 오류(HTTP 400·401·403·404)면 남은 호출을 멈춘다. */
+      if (!abort && shouldAbortOn(res.error)) {
+        abort = abortInfo(res.error);
+        console.error('\n공통 설정 오류로 중단합니다 — HTTP ' + abort.httpStatus + ' (' + (abort.errorType || 'http') + '): ' +
+          (abort.message || '').slice(0, 200));
+        console.error('  · 남은 요청은 보내지 않고 ' + NOT_ATTEMPTED + ' 로 기록합니다. 요청 파라미터·키·모델을 확인한 뒤 다시 실행하세요.');
+      }
 
       /* 호출 이력에 그 시도의 검증 결과·비용을 붙인다 */
       (res.records || []).forEach((rec) => {
@@ -410,6 +451,10 @@ async function main() {
           doc: null, validation: null, metrics: null, attempts: res.attempts || 0, records: res.records || [],
           ok: false, stopped: res.stopped || 'no_doc', error: res.error || null,
           budgetBlocked: res.budgetBlocked || null,
+          /* 문서가 없어도 원문·부분 파싱 객체를 버리지 않는다(JSON 파싱 실패·잘림) */
+          rawText: (res.error && res.error.rawText) || null,
+          partialDoc: (res.error && res.error.partialDoc) || null,
+          truncated: !!(res.error && res.error.truncated),
           engine: 'ai-' + arm.toLowerCase(), model: opt.model, responseModel: null,
           label: ARMS[arm].label, inputBoundary: ARMS[arm].inputs.join('+'), settings: SETTINGS, prompt
         }));
@@ -438,14 +483,23 @@ async function main() {
     const record = {
       fixture: c.fixture, arm: c.arm, attempt: c.attempt, live: c.live,
       requestedModel: c.requestedModel, responseModel: c.responseModel || null,
+      /* 실제 요청 설정 — 모든 AI 실험군 동일(모델·effort·max_tokens). 샘플링 파라미터는 보내지 않는다. */
+      request: {
+        model: c.requestedModel,
+        max_tokens: c.maxTokens == null ? SETTINGS.maxTokens : c.maxTokens,
+        output_config: { effort: c.effort || EFFORT },
+        samplingParamsSent: []
+      },
       promptHash: c.promptHash, feedback: c.feedback,
       prompt: { system: c.promptSystem, user: c.promptUser },
       result: {
         ok: c.ok, errorType: c.errorType || null, httpStatus: c.httpStatus == null ? null : c.httpStatus,
         stopReason: c.stopReason || null, truncated: !!c.truncated, ms: c.ms || 0,
         usage: c.usage || null, message: c.message || null,
-        /* 실패한 호출은 원문 전문(rawText)을, 성공은 앞부분(rawTextPreview)을 남긴다 */
+        thinkingBlocks: c.thinkingBlocks == null ? null : c.thinkingBlocks,
+        /* 성공·실패 모두 응답 전문을 남긴다(잘림·파싱 실패·검증 실패도 절단하지 않는다) */
         rawText: c.rawText || null, rawTextPreview: c.rawTextPreview || null,
+        partialDoc: c.partialDoc || null, parseError: c.parseError || null,
         cost: c.cost || null, validation: c.validation || null
       }
     };
@@ -690,6 +744,98 @@ async function main() {
     selfTests.push({ name: 'JSON 파싱 실패 — 토큰·비용·상태를 잃지 않는다', ok: false, detail: e.message });
   }
 
+  st('Opus 5.5 요청 body — temperature·top_p·top_k 없음 · output_config.effort 명시', () => {
+    const b = requestBody({ model: 'claude-opus-5-5', system: 's', user: 'u' });
+    const banned = REJECTED_SAMPLING_PARAMS.filter((k) => Object.prototype.hasOwnProperty.call(b, k));
+    assert(!banned.length, '400 을 부르는 파라미터가 body 에 있습니다: ' + banned.join(', '));
+    assert(b.output_config && b.output_config.effort === 'medium', 'effort 가 medium 으로 명시되지 않았습니다: ' + JSON.stringify(b.output_config));
+    assert(b.model === 'claude-opus-5-5', '모델이 다릅니다: ' + b.model);
+    assert(b.max_tokens === MAX_TOKENS && MAX_TOKENS >= 12000, 'max_tokens 가 thinking+본문을 담을 만큼 크지 않습니다: ' + b.max_tokens);
+    const keys = Object.keys(b).sort().join(',');
+    assert(keys === 'max_tokens,messages,model,output_config,system', '예상 밖 파라미터가 있습니다: ' + keys);
+    const d = requestBody({ model: 'x', effort: 'low', system: 's', user: 'u' });
+    assert(d.output_config.effort === 'low', 'effort 지정이 무시됐습니다.');
+    return 'model·max_tokens ' + b.max_tokens + '·effort ' + b.output_config.effort + ' · 샘플링 파라미터 0';
+  });
+
+  st('응답 텍스트 — thinking 블록을 건너뛰고 type==="text" 블록만 읽는다', () => {
+    const first = extractText([{ type: 'thinking', thinking: '' }, { type: 'thinking', thinking: '…' }, { type: 'text', text: '{"a":1}' }]);
+    assert(first === '{"a":1}', '첫 블록이 thinking 이면 텍스트를 못 읽습니다: ' + JSON.stringify(first));
+    const multi = extractText([{ type: 'text', text: 'a' }, { type: 'thinking', thinking: '' }, { type: 'text', text: 'b' }]);
+    assert(multi === 'a\nb', '여러 text 블록 결합이 틀렸습니다: ' + JSON.stringify(multi));
+    assert(countThinkingBlocks([{ type: 'thinking' }, { type: 'text', text: 'x' }]) === 1, 'thinking 블록 수 기록이 틀렸습니다.');
+    return 'thinking 2 + text 1 → 본문만 · 다중 text 결합';
+  });
+
+  /* 비동기 자기시험 — 잘림(max_tokens)은 성공이 아니고 E 초안으로도 못 쓴다 */
+  try {
+    const truncatedErr = (() => {
+      const e = new Error('출력이 max_tokens 에서 잘렸습니다(stop_reason: max_tokens)');
+      e.errorType = 'truncated'; e.code = 'MAX_TOKENS'; e.httpStatus = 200; e.truncated = true;
+      e.usage = { input_tokens: 24000, output_tokens: 16000 };
+      e.responseModel = 'claude-opus-5-5';
+      e.rawText = '{"sections":[{"id":"01","paragraphs":[{"text":"잘린 문장';   /* 일부러 미완성 */
+      e.partialDoc = null;
+      return e;
+    })();
+    const res = await runArm({
+      arm: 'D', ctx: probeCtx, pool: poolFor(probeCtx, 'D'), policy: POLICY, maxRetries: 0, model: 'claude-opus-5-5',
+      effort: EFFORT, maxTokens: MAX_TOKENS,
+      callFn: async () => { throw truncatedErr; }
+    });
+    assert(res.ok === false, '잘린 응답이 성공으로 기록됐습니다.');
+    assert(res.error && res.error.errorType === 'truncated' && res.records[0].truncated === true, '잘림 표시가 호출 기록에 없습니다.');
+    assert(res.error.rawText && res.error.rawText.indexOf('잘린 문장') >= 0, '잘린 응답 원문이 전달되지 않았습니다.');
+    assert(Object.prototype.hasOwnProperty.call(res.error, 'partialDoc'), '부분 파싱 객체 자리가 없습니다.');
+    assert(res.records[0].effort === 'medium' && res.records[0].maxTokens === MAX_TOKENS, '호출 기록에 effort·max_tokens 가 없습니다.');
+    const stage = successStage({ arm: 'D', attempts: res.attempts, records: res.records, ok: res.ok });
+    assert(!stage.firstOk && !stage.finalOk && stage.attempted, '잘림이 성공 단계로 집계됐습니다: ' + JSON.stringify(stage));
+    assert(/^skipped_no_valid_d/.test(eSkipReason({ hasD: true, dOk: res.ok, dError: res.error.errorType })), 'E 가 잘린 D 초안을 유효 초안으로 받았습니다.');
+
+    /* 엔진이 던지지 못하고 truncated:true 만 돌려준 경우도 성공이 아니다(방어) */
+    const res2 = await runArm({
+      arm: 'D', ctx: probeCtx, pool: poolFor(probeCtx, 'D'), policy: POLICY, maxRetries: 0, model: 'stub-D',
+      callFn: async () => ({ doc: stubDoc('D', probeCtx, { pool: poolFor(probeCtx, 'D') }), usage: estimateUsage('x', 'y'), ms: 1, model: 'stub-D', truncated: true, stopReason: 'max_tokens', estimated: true })
+    });
+    assert(res2.ok === false && res2.stopped === 'truncated', 'truncated 결과가 성공으로 끝났습니다.');
+    selfTests.push({ name: '잘림(max_tokens) — 성공 아님 · E 초안으로도 못 씀', ok: true, detail: 'ok:false · truncated · ' + formatUsd(res.records[0].usd) + ' · skipped_no_valid_d' });
+  } catch (e) {
+    selfTests.push({ name: '잘림(max_tokens) — 성공 아님 · E 초안으로도 못 씀', ok: false, detail: e.message });
+  }
+
+  /* 자기시험 — 첫 실호출이 공통 설정 오류면 남은 호출을 멈춘다 */
+  try {
+    const calls = [];
+    const items = [['QA02', 'B'], ['QA02', 'C'], ['QA04', 'B'], ['QA04', 'C']];
+    const rec = [];
+    let ab = null;
+    for (const pair of items) {
+      const fid = pair[0], armName = pair[1];
+      if (ab) { rec.push(Object.assign({ fixture: fid, arm: armName }, notAttemptedRow(ab))); continue; }
+      try {
+        calls.push(fid + armName);
+        if (fid === 'QA02' && armName === 'C') {
+          const e = new Error('모델 호출 실패: HTTP 400 — temperature: Extra inputs are not permitted');
+          e.errorType = 'http'; e.httpStatus = 400;
+          throw e;
+        }
+      } catch (e) {
+        rec.push({ fixture: fid, arm: armName, ok: false, errorType: e.errorType, httpStatus: e.httpStatus });
+        if (shouldAbortOn(e)) ab = abortInfo(e);
+      }
+    }
+    assert(calls.length === 2, '중단 뒤에도 호출을 보냈습니다: ' + calls.join(', '));
+    const na = rec.filter((r) => r.skipped === NOT_ATTEMPTED);
+    assert(na.length === 2, '미시도 기록이 2건이 아닙니다: ' + na.length);
+    assert(na.every((r) => r.attempts === 0 && r.ok === false), '미시도가 시도·성공으로 기록됐습니다.');
+    assert(ab && ab.httpStatus === 400 && ab.reason === 'common-config-error' && ab.message, '중단 사유가 남지 않았습니다.');
+    assert(shouldAbortOn({ httpStatus: 401 }) && shouldAbortOn({ httpStatus: 403 }) && shouldAbortOn({ httpStatus: 404 }), '인증·모델 설정 오류를 중단 대상으로 보지 않습니다.');
+    assert(!shouldAbortOn({ httpStatus: 500 }) && !shouldAbortOn({ httpStatus: 429 }) && !shouldAbortOn({ errorType: 'network' }) && !shouldAbortOn(null), '다음 호출이 성공할 수 있는 오류까지 중단합니다.');
+    selfTests.push({ name: '공통 설정 오류 — 남은 호출 중단 · 미시도 notAttempted', ok: true, detail: 'HTTP 400 뒤 호출 0회 · 미시도 2건 · 401/403/404 중단 · 5xx/429/네트워크 계속' });
+  } catch (e) {
+    selfTests.push({ name: '공통 설정 오류 — 남은 호출 중단 · 미시도 notAttempted', ok: false, detail: e.message });
+  }
+
   /* ---------------- 집계 ---------------- */
   const agg = {};
   /* 요청 건수(스킵·실패 포함)를 모수로 넘긴다 — 성공한 것만 모아 재지 않는다. */
@@ -711,6 +857,8 @@ async function main() {
     preflight,
     /* 요청 건수 모수 성공률·실패율 + 실패한 요청(삭제하지 않고 기술 평가에 남긴다) */
     successByArm: agg,
+    settings: Object.assign({ model: live ? opt.model : null }, RUN_SETTINGS),
+    abort: abort || null,
     failures: rows.filter((r) => r.ok !== true).map((r) => ({
       fixture: r.fixture.id, arm: r.arm, skipped: r.skipped || null, stopped: r.stopped || null,
       error: r.error || null, attempts: r.attempts || 0, hasDoc: !!r.doc,
@@ -769,6 +917,22 @@ async function main() {
     return '사례 ' + orders.length + ' · 순서 ' + distinct + '종';
   });
 
+  st('산출물 기록 — 블라인드 키가 모델·effort를 남기고 temperature 를 쓰지 않는다', () => {
+    const armsAi = Object.keys(built.key.arms).filter((a) => a !== 'A');
+    armsAi.forEach((a) => {
+      const s = built.key.arms[a].settings || {};
+      assert(s.effort === 'medium', a + ' 의 effort 기록이 medium 이 아닙니다: ' + JSON.stringify(s));
+      assert(!Object.prototype.hasOwnProperty.call(s, 'temperature'), a + ' 에 temperature 설정이 남았습니다.');
+      assert(s.maxTokens === MAX_TOKENS, a + ' 의 max_tokens 기록이 다릅니다.');
+    });
+    const techSettings = JSON.stringify(built.tech);
+    assert(techSettings.indexOf('"effort":"medium"') >= 0, 'tech-eval 에 effort 기록이 없습니다.');
+    const runSettings = JSON.stringify(RUN_SETTINGS);
+    assert(runSettings.indexOf('temperature·top_p·top_k') >= 0, '실행 설정에 샘플링 파라미터 제거가 적히지 않았습니다.');
+    assert(runSettings.indexOf('"effort":"medium"') >= 0, '실행 설정에 effort medium 이 없습니다.');
+    return 'AI 실험군 ' + armsAi.length + '개 · effort medium · max_tokens ' + MAX_TOKENS + ' · temperature 미기록';
+  });
+
   st('자동 검증의 경계 — 리포트에 명리 품질 보증 아님을 적는다', () => {
     const score = buildScore({
       runId: 't', mode: 'stub', set: 't', model: 't', createdAt: 't', gateDef: GATE, agg: {},
@@ -779,14 +943,25 @@ async function main() {
   });
 
   /* ---------------- 산출물 ---------------- */
+  /* 문서가 있는 실패(검증 실패)도 그 응답의 원문을 docs.json 에 남긴다 */
+  const rawTextOf = (r) => {
+    if (r.rawText) return r.rawText;
+    const last = callLog.filter((c) => c.fixture === r.fixture.id && c.arm === r.arm).slice(-1)[0];
+    return last && last.rawText ? last.rawText : null;
+  };
   writeFileSync(resolve(outDir, 'docs.json'), JSON.stringify(rows.map((r) => ({
     fixture: r.fixture.id, arm: r.arm, skipped: r.skipped || null, stopped: r.stopped || null,
-    error: r.error || null, attempts: r.attempts, ok: r.ok, doc: r.doc,
+    abort: r.abort || null,
+    error: r.error || null, attempts: r.attempts, ok: r.ok, truncated: !!r.truncated,
+    doc: r.doc,
+    /* 문서가 없거나 잘렸어도 응답 원문·파싱된 부분 객체를 그대로 남긴다 */
+    rawText: rawTextOf(r), partialDoc: r.partialDoc || null,
     validation: r.validation ? { violations: r.validation.violations, byRule: r.validation.stats.byRule } : null
   })), null, 1));
   const allRecords = rows.flatMap((r) => (r.records || []).map((x) => Object.assign({ fixture: r.fixture.id }, x)));
   writeFileSync(resolve(outDir, 'cost.json'), JSON.stringify({
     disclaimer: COST_ESTIMATE_DISCLAIMER,
+    settings: Object.assign({ runMode: opt.mode, live, model: live ? opt.model : null }, RUN_SETTINGS),
     safety: { maxCalls: opt.maxCalls, maxRetries: opt.maxRetries, maxCostUsd: opt.maxCostUsd, defaulted: safetyApplied.applied },
     summary: costSummary, records: allRecords, preflight
   }, null, 1));
@@ -798,6 +973,8 @@ async function main() {
     set: opt.set + ' (' + picked.map((f) => f.id).join(',') + ')',
     fixtureCount: picked.length,
     model: live ? opt.model : 'stub (결정적 오프라인 응답 · 모델 호출 없음)',
+    settings: Object.assign({ model: live ? opt.model : null }, RUN_SETTINGS),
+    abort: abort || null,
     createdAt, gateDef: GATE, agg, costSummary,
     rows, probes, selfTests, determinism,
     pairs: pairChecks(contexts),
@@ -848,6 +1025,16 @@ async function main() {
   if (unexpectedGate.length && opt.mode === 'stub') {
     console.error('\n스텁 게이트 예상 밖 실패: ' + unexpectedGate.join(', ') + ' — 검증기나 스텁 계약을 고쳐야 합니다.');
     process.exitCode = 1;
+  }
+  /* 공통 설정 오류로 멈췄으면 오류 요약과 함께 비정상 종료로 끝낸다 */
+  if (abort) {
+    const notAttemptedCount = rows.filter((r) => r.abort).length;
+    console.error('\n공통 설정 오류로 실행을 중단했습니다 — HTTP ' + (abort.httpStatus == null ? '—' : abort.httpStatus) +
+      ' (' + (abort.errorType || 'http') + ')');
+    console.error('  · 오류: ' + (abort.message || '(메시지 없음)'));
+    console.error('  · 미시도 ' + notAttemptedCount + '건(' + NOT_ATTEMPTED + ') — 요청 파라미터(temperature 등)·키·모델을 확인한 뒤 다시 실행하세요.');
+    console.error('  · 산출물에 남은 호출 기록과 docs.json 은 보존했습니다: ' + outDir);
+    process.exitCode = 2;
   }
 }
 

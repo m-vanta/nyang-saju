@@ -22,6 +22,8 @@ export function buildScore(run) {
     createdAt: run.createdAt,
     gate: run.gateDef,
     safety: run.safety || null,
+    settings: run.settings || null,
+    abort: run.abort || null,
     engines: run.agg,
     /* 실험군별 성공률·실패율 — 모수는 요청 건수(스킵·실패 포함) */
     successByArm: Object.keys(run.agg || {}).reduce((o, k) => {
@@ -93,7 +95,16 @@ export function writeReport(outDir, run) {
   L.push('');
   L.push('- 모드: **' + run.mode + '**' + (run.mode === 'stub' ? ' (오프라인 · 네트워크 없음 · 응답은 결정적 스텁)' : ' (실호출)'));
   L.push('- 픽스처: ' + run.set + ' (' + run.fixtureCount + '건 × ' + arms.length + '실험군)');
-  L.push('- 모델: ' + (run.model || '—') + ' · temperature 0');
+  L.push('- 모델: ' + (run.model || '—') + ' · effort ' + ((run.settings && run.settings.effort) || '—') +
+    ' · max_tokens ' + ((run.settings && run.settings.maxTokens) != null ? run.settings.maxTokens : '—') +
+    ' · temperature·top_p·top_k 는 보내지 않는다(Opus 5.5 는 보내면 HTTP 400)');
+  if (run.settings && run.settings.thinking) L.push('- thinking: ' + run.settings.thinking);
+  if (run.settings && run.settings.truncation) L.push('- 잘림 처리: ' + run.settings.truncation);
+  if (run.abort) {
+    L.push('- **중단됨**: 공통 설정 오류 HTTP ' + (run.abort.httpStatus == null ? '—' : run.abort.httpStatus) +
+      ' (' + (run.abort.errorType || 'http') + ') — ' + (run.abort.message || '') +
+      '. 남은 요청은 보내지 않고 `notAttempted` 로 기록했다.');
+  }
   L.push('- judge: 결정적 근사(heuristic) — 모델 채점 아님');
   if (run.safety) {
     L.push('- 안전장치(적용값): 최대 호출 **' + (run.safety.maxCalls ? run.safety.maxCalls + '회' : '상한 없음') + '** · 최초 실험 재시도 **' + run.safety.maxRetries + '회**' +
@@ -133,6 +144,7 @@ export function writeReport(outDir, run) {
   L.push('- **1차 성공률** = 재시도 없이 1차 시도에서 파싱·유효성 검사를 모두 통과한 요청 / 요청 건수.');
   L.push('- **재시도 후 성공률** = 최종적으로 통과한 요청 / 요청 건수(= 1 - 최종 실패율). **최종 실패율** = 끝까지 통과하지 못한 요청 / 요청 건수.');
   L.push('- 미시도는 E(유효한 D 초안 없음)·예산/호출 상한으로 호출하지 않은 건이다. 미시도도 요청 모수에서 빼지 않고 실패로 센다.');
+  L.push('- **출력 잘림(`stop_reason: max_tokens`)은 정상 생성 성공으로 세지 않는다** — 파싱이 돼도 `ok:false`·최종 실패로 집계하고, E 는 그 D 초안을 유효 초안으로 받지 않는다.');
   L.push('- **실패한 응답은 지우지 않는다** — 응답이 왔으면 raw output·오류 사유·usage·비용이 `calls/`·`docs.json`·`cost.json`·`score.json` 에 그대로 남고, 아래 「실패·건너뜀 상세」에 모은다.');
   L.push('');
   L.push('## 품질 지표 (문서가 나온 응답만 평균 — 성공률·실패율과 항상 함께 본다)');

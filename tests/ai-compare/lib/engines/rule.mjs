@@ -246,5 +246,6 @@ export function ruleDoc(ctx, pool) {
 }
 
 export function ruleMeta(ctx) {
-  return { engine: 'rule', model: null, provider: 'catalog', params: { temperature: 0 } };
+  /* 샘플링 파라미터 없음 — 규칙 엔진은 결정적이고, AI 실험군과 같은 설정(모델·effort)을 쓰지 않는다. */
+  return { engine: 'rule', model: null, provider: 'catalog', params: {} };
 }
