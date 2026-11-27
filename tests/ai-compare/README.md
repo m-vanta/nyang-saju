@@ -35,8 +35,8 @@ node tests/ai-compare/run.mjs --mode stub --set pilot
 
 # 실호출 — 파일럿 3건 / 전체 12건 (ANTHROPIC_API_KEY 필요)
 # pilot 기본값: 최대 12회 호출 · 재시도 0회 (QA02·QA04·QA09 × B·C·D·E = 12회, A 는 API 0회)
-node tests/ai-compare/run.mjs --mode pilot --max-cost-usd 5
-node tests/ai-compare/run.mjs --mode full --max-cost-usd 20
+node tests/ai-compare/run.mjs --mode pilot --max-cost-usd 10
+node tests/ai-compare/run.mjs --mode full --max-cost-usd 40
 
 # 실호출 배선을 스텁으로 예행
 node tests/ai-compare/run.mjs --mode full --stub
@@ -61,6 +61,8 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 | `--stub` | pilot/full 배선을 스텁으로 |
 
 종료 코드: 하네스·검증기 자기시험이 실패하면 1, 예산·비교쌍 설정 오류는 2.
+
+`--max-cost-usd` 는 **호출 전 최대 예상 비용**(프롬프트 입력 토큰 추정 + `max_tokens` 전량 출력)으로 검사한다 — 실제 청구보다 훨씬 큰 보수적 상한이다. `max_tokens` 16000 기준 파일럿 12회 ≈ $4.82, 전체 48회 ≈ $19.45(재시도 1회 기본값 포함 ≈ $38.90)이므로 위 예시는 그 위로 잡았다.
 
 ## 모델 요청 규격 (Claude Opus 5.5)
 
