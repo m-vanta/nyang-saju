@@ -11,11 +11,17 @@
 
    안전장치
      --max-calls N        모델 호출 총 횟수 상한(재시도 포함)
-     --max-retries N      검증 실패 시 재시도 횟수(기본 1)
+     --max-retries N      검증 실패 시 재시도 횟수(기본 1 · pilot 기본 0)
      --max-cost-usd X     누적 비용 상한. 호출 전 최대 예상 비용으로 검사해 넘으면 호출하지 않는다
      --arms A,B,C,D,E     일부 실험군만 실행
      --model <id>         기본 claude-opus-5-5
      --out <dir>          산출물 경로(기본 out/<runId>)
+
+   파일럿 기본값 (--mode pilot, 직접 지정하지 않았을 때만)
+     --max-calls 12 · --max-retries 0
+     QA02·QA04·QA09 × B·C·D·E = 12회 호출 (A 는 로컬 규칙이라 API 호출 0회).
+     E 는 유효한 D 초안이 없으면 호출하지 않으므로 실제 호출은 12회 이하일 수 있다.
+     세션 한도·작은 비용으로 첫 실험을 끝내기 위한 값이고, 더 필요하면 명시적으로 넘긴다.
 
    리뷰 반영 (P0·P1)
      · B 도 명식 기본표 + 대운·세운을 받는다(P0-1-1). C/D 경계는 analysisData vs KB 하나(P0-1-2).
@@ -28,6 +34,10 @@
      · full 모드는 비교쌍 3종을 반드시 포함(P1-2).
 
    종료 코드: 하네스·검증기 자기시험이 실패하면 1. 예산·비교쌍 설정 오류는 2.
+
+   주의: API 비용 추정치는 사전 추정치일 뿐 절대적인 과금 상한이 아니며,
+        실제 과금은 API 제공자의 청구 기준을 따른다. 이 문장은 리포트·cost.json·
+        CLI 출력에도 같이 나간다(lib/cost.mjs COST_ESTIMATE_DISCLAIMER).
    ========================================================================== */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +50,7 @@ import { stubDoc, probeDocs } from './lib/engines/stub.mjs';
 import { aiDoc, apiKey, MAX_TOKENS } from './lib/engines/ai.mjs';
 import { evidencePool, ARMS, ARM_KEYS } from './lib/facts.mjs';
 import { validate } from './lib/validate.mjs';
-import { measure, aggregate } from './lib/metrics.mjs';
+import { measure, aggregate, successStage } from './lib/metrics.mjs';
 import { judge } from './lib/judge.mjs';
 import { runArm, createBudget } from './lib/retry.mjs';
 import { buildScore, writeReport } from './lib/report.mjs';
@@ -50,7 +60,7 @@ import { KB_EVIDENCE, kbStats, validateKB, KB_VERSION } from './lib/knowledge-ba
 import { promptMeta, userPrompt, PROMPT_VERSION } from './lib/prompts.mjs';
 import {
   estimateUsage, summarize, DEFAULT_MODEL, PRICING, FX_KRW_PER_USD, costOf, costRecord,
-  formatUsd, estimateMaxUsd
+  formatUsd, estimateMaxUsd, COST_ESTIMATE_DISCLAIMER
 } from './lib/cost.mjs';
 import { checkSchema } from './lib/schema.mjs';
 import { COMPARISON_PAIRS, missingPairs, pairChecks } from './lib/pairs.mjs';
@@ -65,7 +75,8 @@ const SETTINGS = { temperature: 0, maxTokens: MAX_TOKENS };
 function args(argv) {
   const out = {
     mode: 'stub', set: null, fixtures: null, arms: ARM_KEYS.slice(),
-    maxCalls: 0, maxRetries: 1, maxCostUsd: 0, model: DEFAULT_MODEL, out: null, stub: false
+    maxCalls: 0, maxRetries: 1, maxCostUsd: 0, model: DEFAULT_MODEL, out: null, stub: false,
+    given: { maxCalls: false, maxRetries: false }
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -73,8 +84,8 @@ function args(argv) {
     else if (a === '--set') out.set = argv[++i];
     else if (a === '--fixtures') out.fixtures = argv[++i];
     else if (a === '--arms') out.arms = String(argv[++i]).split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
-    else if (a === '--max-calls') out.maxCalls = Number(argv[++i]);
-    else if (a === '--max-retries') out.maxRetries = Number(argv[++i]);
+    else if (a === '--max-calls') { out.maxCalls = Number(argv[++i]); out.given.maxCalls = true; }
+    else if (a === '--max-retries') { out.maxRetries = Number(argv[++i]); out.given.maxRetries = true; }
     else if (a === '--max-cost-usd') out.maxCostUsd = Number(argv[++i]);
     else if (a === '--model') out.model = argv[++i];
     else if (a === '--out') out.out = argv[++i];
@@ -83,6 +94,18 @@ function args(argv) {
   }
   if (!out.set) out.set = out.mode === 'pilot' ? 'pilot' : 'all';
   return out;
+}
+
+/* 파일럿 기본 안전장치 — 직접 지정하지 않았을 때만 적용한다.
+   QA02·QA04·QA09 × B·C·D·E = 12회 호출, 재시도 0회. A 는 로컬 규칙(API 호출 0회). */
+export const PILOT_DEFAULTS = { maxCalls: 12, maxRetries: 0 };
+
+export function applySafetyDefaults(opt) {
+  const applied = [];
+  if (opt.mode !== 'pilot') return { maxCalls: opt.maxCalls, maxRetries: opt.maxRetries, applied };
+  if (!opt.given || !opt.given.maxCalls) { opt.maxCalls = PILOT_DEFAULTS.maxCalls; applied.push('--max-calls ' + PILOT_DEFAULTS.maxCalls); }
+  if (!opt.given || !opt.given.maxRetries) { opt.maxRetries = PILOT_DEFAULTS.maxRetries; applied.push('--max-retries ' + PILOT_DEFAULTS.maxRetries); }
+  return { maxCalls: opt.maxCalls, maxRetries: opt.maxRetries, applied };
 }
 
 function stamp() {
@@ -159,12 +182,28 @@ async function main() {
   }
 
   const arms = opt.arms.filter((a) => ARM_KEYS.indexOf(a) >= 0).sort((a, b) => ARM_KEYS.indexOf(a) - ARM_KEYS.indexOf(b));
+  const safetyApplied = applySafetyDefaults(opt);
+  const safety = {
+    mode: opt.mode,
+    set: opt.set,
+    maxCalls: opt.maxCalls,
+    maxRetries: opt.maxRetries,
+    maxCostUsd: opt.maxCostUsd,
+    defaulted: safetyApplied.applied,
+    plannedCallRule: 'QA02·QA04·QA09 × B·C·D·E = 12회 (A 는 로컬 규칙 · API 호출 0회)',
+    costDisclaimer: COST_ESTIMATE_DISCLAIMER
+  };
   const runId = stamp();
   const outDir = resolve(opt.out || resolve(HERE, 'out/' + runId));
   const createdAt = new Date().toISOString();
   const kbList = { entries: KB_EVIDENCE };
 
   const budget = createBudget({ maxCalls: opt.maxCalls, maxUsd: opt.maxCostUsd });
+  if (opt.mode === 'pilot') {
+    console.log('파일럿 안전장치: --max-calls ' + opt.maxCalls + ' · --max-retries ' + opt.maxRetries +
+      (safetyApplied.applied.length ? ' (기본값 적용: ' + safetyApplied.applied.join(' · ') + ')' : ' (직접 지정)') +
+      ' — ' + safety.plannedCallRule);
+  }
   const rows = [];
   const contexts = new Map();
   const callLog = [];
@@ -313,7 +352,9 @@ async function main() {
               ok: false, errorType: e.errorType, httpStatus: e.httpStatus == null ? null : e.httpStatus,
               usage: e.usage || null, responseModel: e.responseModel || null, ms: e.ms || 0,
               stopReason: e.stopReason || null, truncated: !!e.truncated, message: e.message,
-              rawTextPreview: e.rawText ? String(e.rawText).slice(0, 1200) : null
+              rawTextPreview: e.rawText ? String(e.rawText).slice(0, 1200) : null,
+              /* 실패한 응답 원문은 자르지 않고 보존한다(삭제·요약 금지) */
+              rawText: e.rawText ? String(e.rawText) : null
             });
             callLog.push(entry);
             throw e;
@@ -327,7 +368,8 @@ async function main() {
             fixture: fixture.id, arm, attempt, live: false,
             requestedModel: opt.model, responseModel: opt.model, promptHash: prompt.hash,
             promptSystem: prompt.system, promptUser: prompt.user, feedback: [],
-            ok: true, usage, ms: 0, stopReason: 'end_turn', truncated: false, httpStatus: null
+            ok: true, usage, ms: 0, stopReason: 'end_turn', truncated: false, httpStatus: null,
+            rawTextPreview: JSON.stringify(doc).slice(0, 1200)
           };
           callLog.push(entry);
           return { doc, usage, ms: 0, requestedModel: opt.model, responseModel: opt.model, model: opt.model, estimated: true };
@@ -401,7 +443,9 @@ async function main() {
       result: {
         ok: c.ok, errorType: c.errorType || null, httpStatus: c.httpStatus == null ? null : c.httpStatus,
         stopReason: c.stopReason || null, truncated: !!c.truncated, ms: c.ms || 0,
-        usage: c.usage || null, message: c.message || null, rawTextPreview: c.rawTextPreview || null,
+        usage: c.usage || null, message: c.message || null,
+        /* 실패한 호출은 원문 전문(rawText)을, 성공은 앞부분(rawTextPreview)을 남긴다 */
+        rawText: c.rawText || null, rawTextPreview: c.rawTextPreview || null,
         cost: c.cost || null, validation: c.validation || null
       }
     };
@@ -559,8 +603,38 @@ async function main() {
     return 'max-calls · max-cost-usd 동작';
   });
 
-  st('스키마 검사기 — 8섹션 그릇', () => {
-    const good = stubDoc('C', probeCtx, { pool: poolFor(probeCtx, 'C') });
+  st('파일럿 기본 안전장치 — 직접 지정하지 않으면 12회·재시도 0회', () => {
+    const a = applySafetyDefaults({ mode: 'pilot', maxCalls: 0, maxRetries: 1, given: {} });
+    assert(a.maxCalls === 12, '파일럿 기본 최대 호출이 12가 아닙니다: ' + a.maxCalls);
+    assert(a.maxRetries === 0, '파일럿 기본 재시도가 0이 아닙니다: ' + a.maxRetries);
+    assert(a.applied.length === 2, '적용한 기본값이 기록되지 않았습니다.');
+    const b = applySafetyDefaults({ mode: 'pilot', maxCalls: 30, maxRetries: 1, given: { maxCalls: true, maxRetries: true } });
+    assert(b.maxCalls === 30 && b.maxRetries === 1, '직접 지정한 값을 덮어썼습니다: ' + b.maxCalls + '/' + b.maxRetries);
+    const c = applySafetyDefaults({ mode: 'full', maxCalls: 0, maxRetries: 1, given: {} });
+    assert(c.maxCalls === 0 && c.maxRetries === 1, '파일럿이 아닌 모드에 기본값을 적용했습니다.');
+    return 'pilot 12/0 · 명시 지정 유지 · full 무변경';
+  });
+
+  st('품질·성공률 집계 — 실패·스킵을 요청 모수에서 빼지 않는다', () => {
+    const metricRow = (ok) => ({ metrics: { ea1: 1, ea2: 1, ca: null, caHit: 0, caTotal: 0, hz: 0, ga: 0, sc: 0, cr: 0, gn: 0, gnChartOnly: 0, kb: 0, judge: 5, violations: 0, warnings: 0, sectionsOk: 8, sectionsUnavailable: 0 }, ok });
+    const rows = [
+      Object.assign(metricRow(true), { arm: 'C', attempts: 1 }),
+      Object.assign(metricRow(true), { arm: 'C', attempts: 2 }),          // 재시도로 성공
+      Object.assign(metricRow(false), { arm: 'C', attempts: 2 }),         // 최종 실패 + 문서 있음
+      { arm: 'C', attempts: 0, ok: false, skipped: 'skipped_no_d', doc: null }  // 미시도
+    ];
+    const m = aggregate(rows);
+    assert(m.requestedCount === 4, '요청 건수가 4가 아닙니다: ' + m.requestedCount);
+    assert(m.attemptedCount === 3 && m.notAttemptedCount === 1, '시도/미시도 집계가 틀렸습니다.');
+    assert(m.firstAttemptSuccess === 1, '1차 성공이 1이 아닙니다: ' + m.firstAttemptSuccess);
+    assert(Math.abs(m.firstAttemptSuccessRate - 0.25) < 1e-9, '1차 성공률 모수가 요청 건수가 아닙니다: ' + m.firstAttemptSuccessRate);
+    assert(m.retriedSuccess === 1 && m.finalSuccess === 2, '재시도 후 성공 집계가 틀렸습니다.');
+    assert(m.finalFailure === 2 && Math.abs(m.finalFailureRate - 0.5) < 1e-9, '최종 실패율이 틀렸습니다: ' + m.finalFailureRate);
+    assert(m.qualityItems === 3 && m.qualityExcluded === 1, '품질 모수(문서가 나온 응답) 집계가 틀렸습니다.');
+    return '요청 4 · 1차 1(25%) · 최종 실패 2(50%) · 품질 모수 3';
+  });
+
+  st('스키마 검사기 — 8섹션 그릇', () => {    const good = stubDoc('C', probeCtx, { pool: poolFor(probeCtx, 'C') });
     assert(checkSchema(good).length === 0, checkSchema(good).join(', '));
     const bad = JSON.parse(JSON.stringify(good));
     bad.sections.pop();
@@ -618,7 +692,8 @@ async function main() {
 
   /* ---------------- 집계 ---------------- */
   const agg = {};
-  arms.forEach((k) => { agg[k] = aggregate(rows.filter((r) => r.arm === k && r.metrics)); });
+  /* 요청 건수(스킵·실패 포함)를 모수로 넘긴다 — 성공한 것만 모아 재지 않는다. */
+  arms.forEach((k) => { agg[k] = aggregate(rows.filter((r) => r.arm === k)); });
   /* 차단된 호출은 호출 수·비용에 세지 않는다(호출 전에 막혔으므로) */
   const costSummary = summarize(rows.flatMap((r) => (r.records || []).filter((x) => x.phase !== 'blocked')));
   costSummary.blockedCalls = rows.reduce((n, r) => n + (r.records || []).filter((x) => x.phase === 'blocked').length, 0);
@@ -626,14 +701,29 @@ async function main() {
   /* ---------------- 블라인드 자료 3종 ---------------- */
   const blindItems = rows.filter((r) => r.doc).map((r) => ({
     ctx: r.ctx, arm: r.arm, doc: r.doc, validation: r.validation, metrics: r.metrics,
-    attempts: r.attempts, records: r.records, prompt: r.prompt, settings: r.settings,
+    attempts: r.attempts, ok: r.ok, records: r.records, prompt: r.prompt, settings: r.settings,
     model: r.model, responseModel: r.responseModel, engine: r.engine, label: r.label,
     inputBoundary: r.inputBoundary, pool: r.pool, contentOrigin: r.contentOrigin || null
   }));
   const built = buildBlind({
     runId, createdAt, items: blindItems, seed: BLIND_SEED, name: POLICY.name,
     cost: { totalUsdKnown: costSummary.totalUsdKnown, unknownPricingCalls: costSummary.unknownPricingCalls },
-    preflight
+    preflight,
+    /* 요청 건수 모수 성공률·실패율 + 실패한 요청(삭제하지 않고 기술 평가에 남긴다) */
+    successByArm: agg,
+    failures: rows.filter((r) => r.ok !== true).map((r) => ({
+      fixture: r.fixture.id, arm: r.arm, skipped: r.skipped || null, stopped: r.stopped || null,
+      error: r.error || null, attempts: r.attempts || 0, hasDoc: !!r.doc,
+      validation: r.validation ? { violations: r.validation.violations.length, byRule: r.validation.stats ? r.validation.stats.byRule : null } : null,
+      records: (r.records || []).map((x) => ({
+        attempt: x.attempt, phase: x.phase, ok: x.ok, errorType: x.errorType || null,
+        httpStatus: x.httpStatus == null ? null : x.httpStatus, stopReason: x.stopReason || null,
+        truncated: !!x.truncated, usage: x.usage, usd: x.usd, krw: x.krw,
+        pricingKnown: x.pricingKnown, costStatus: x.costStatus,
+        promptFile: x.promptFile || null
+      }))
+    })),
+    safety
   });
   const blindDir = writeBlind(outDir, built);
 
@@ -690,10 +780,16 @@ async function main() {
 
   /* ---------------- 산출물 ---------------- */
   writeFileSync(resolve(outDir, 'docs.json'), JSON.stringify(rows.map((r) => ({
-    fixture: r.fixture.id, arm: r.arm, skipped: r.skipped || null, doc: r.doc, attempts: r.attempts, ok: r.ok
+    fixture: r.fixture.id, arm: r.arm, skipped: r.skipped || null, stopped: r.stopped || null,
+    error: r.error || null, attempts: r.attempts, ok: r.ok, doc: r.doc,
+    validation: r.validation ? { violations: r.validation.violations, byRule: r.validation.stats.byRule } : null
   })), null, 1));
   const allRecords = rows.flatMap((r) => (r.records || []).map((x) => Object.assign({ fixture: r.fixture.id }, x)));
-  writeFileSync(resolve(outDir, 'cost.json'), JSON.stringify({ summary: costSummary, records: allRecords, preflight }, null, 1));
+  writeFileSync(resolve(outDir, 'cost.json'), JSON.stringify({
+    disclaimer: COST_ESTIMATE_DISCLAIMER,
+    safety: { maxCalls: opt.maxCalls, maxRetries: opt.maxRetries, maxCostUsd: opt.maxCostUsd, defaulted: safetyApplied.applied },
+    summary: costSummary, records: allRecords, preflight
+  }, null, 1));
 
   const aRow = rows.filter((r) => r.arm === 'A' && r.contentOrigin)[0];
   const run = {
@@ -710,6 +806,7 @@ async function main() {
     kbProblems: validateKB(),
     contentOrigin: aRow ? aRow.contentOrigin : null,
     blindInfo: { dir: blindDir, displayOrder: built.key.displayOrder, seed: BLIND_SEED },
+    safety,
     budget: budget.state, skipped
   };
   writeFileSync(resolve(outDir, 'score.json'), JSON.stringify(buildScore(run), null, 1));
@@ -717,7 +814,16 @@ async function main() {
   console.log(md);
   console.log('\n산출물: ' + outDir);
   console.log('블라인드: ' + blindDir + ' (blind-customer · blind-myeongri · tech-eval · 키는 blind-key.json)');
+  console.log('비용 고지: ' + COST_ESTIMATE_DISCLAIMER);
   if (budget.state.exceeded) console.log('예산/호출 상한으로 건너뜀: ' + skipped + '건 (' + budget.state.exceeded + ')');
+  Object.keys(agg).forEach((k) => {
+    const m = agg[k];
+    if (!m || !m.requestedCount) return;
+    console.log(k + ' 성공률: 요청 ' + m.requestedCount + ' · 1차 ' + m.firstAttemptSuccess + ' (' + Math.round(m.firstAttemptSuccessRate * 1000) / 10 + '%)' +
+      ' · 재시도 후 ' + m.finalSuccess + ' (' + Math.round(m.afterRetrySuccessRate * 1000) / 10 + '%)' +
+      ' · 최종 실패 ' + m.finalFailure + ' (' + Math.round(m.finalFailureRate * 1000) / 10 + '%)' +
+      ' · 품질 모수 ' + m.qualityItems);
+  });
 
   const probeFail = probes.filter((p) => !p.ok);
   const selfFail = selfTests.filter((t) => !t.ok);

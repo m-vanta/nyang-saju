@@ -99,7 +99,7 @@ export async function callModel(p) {
   if (!res.ok) {
     throw apiError('모델 호출 실패: HTTP ' + res.status + ' — ' + text.slice(0, 300), {
       code: 'HTTP_' + res.status, errorType: 'http', httpStatus: res.status,
-      requestedModel, ms
+      requestedModel, ms, rawText: text
     });
   }
   let body;
@@ -108,7 +108,7 @@ export async function callModel(p) {
   } catch (e) {
     throw apiError('응답 본문이 JSON 이 아닙니다.', {
       code: 'BAD_RESPONSE_BODY', errorType: 'bad_response', httpStatus: res.status,
-      requestedModel, ms
+      requestedModel, ms, rawText: text
     });
   }
   const rawText = (body.content || []).map((c) => (c.type === 'text' ? c.text : '')).join('');
@@ -152,10 +152,11 @@ export async function aiDoc(arm, ctx, o) {
   try {
     doc = parseJsonLoose(r.rawText);
   } catch (e) {
-    /* 응답은 왔는데 JSON 이 아니다 — 토큰·비용은 이미 썼다. 오류에 실어 보낸다. */
+    /* 응답은 왔는데 JSON 이 아니다 — 토큰·비용은 이미 썼다. 오류에 실어 보낸다.
+       rawText 는 자르지 않고 그대로 넘긴다 — 실패한 응답도 삭제하지 않고 보존한다. */
     throw apiError('응답 JSON 파싱 실패: ' + e.message, Object.assign({
       code: 'JSON_PARSE', errorType: 'json_parse'
-    }, r, { rawText: r.rawText.slice(0, 4000) }));
+    }, r, { rawText: r.rawText }));
   }
   doc.engine = 'ai-' + arm.toLowerCase();
   doc.grounding = 'evidence';

@@ -6,8 +6,9 @@
    ========================================================================== */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { formatUsd, formatKrw } from './cost.mjs';
+import { formatUsd, formatKrw, COST_ESTIMATE_DISCLAIMER } from './cost.mjs';
 import { gateOf, GATE_EXEMPT } from './gates.mjs';
+import { successStage } from './metrics.mjs';
 
 const pct = (n) => (n === null || n === undefined ? '—' : (n * 100).toFixed(1) + '%');
 const num = (n) => (n === null || n === undefined ? '—' : (Math.round(n * 1000) / 1000).toString());
@@ -20,24 +21,53 @@ export function buildScore(run) {
     model: run.model,
     createdAt: run.createdAt,
     gate: run.gateDef,
+    safety: run.safety || null,
     engines: run.agg,
+    /* 실험군별 성공률·실패율 — 모수는 요청 건수(스킵·실패 포함) */
+    successByArm: Object.keys(run.agg || {}).reduce((o, k) => {
+      const m = run.agg[k] || {};
+      o[k] = {
+        requestedCount: m.requestedCount || 0,
+        attemptedCount: m.attemptedCount || 0,
+        notAttemptedCount: m.notAttemptedCount || 0,
+        firstAttemptSuccess: m.firstAttemptSuccess || 0,
+        firstAttemptSuccessRate: m.firstAttemptSuccessRate == null ? null : m.firstAttemptSuccessRate,
+        retriedSuccess: m.retriedSuccess || 0,
+        finalSuccess: m.finalSuccess || 0,
+        afterRetrySuccessRate: m.afterRetrySuccessRate == null ? null : m.afterRetrySuccessRate,
+        finalFailure: m.finalFailure || 0,
+        finalFailureRate: m.finalFailureRate == null ? null : m.finalFailureRate,
+        qualityItems: m.qualityItems || 0,
+        qualityExcluded: m.qualityExcluded || 0
+      };
+      return o;
+    }, {}),
     cost: run.costSummary,
+    costDisclaimer: COST_ESTIMATE_DISCLAIMER,
     budget: run.budget,
     preflight: run.preflight || null,
-    fixtures: run.rows.map((r) => ({
-      id: r.fixture.id,
-      arm: r.arm,
-      skipped: r.skipped || null,
-      metrics: r.metrics,
-      attempts: r.attempts,
-      ok: r.ok,
-      modelRequested: r.model || null,
-      modelResponse: r.responseModel || null,
-      violations: r.validation ? r.validation.violations.map((v) => v.rule + ' ' + v.where + ' ' + v.detail) : [],
-      structuralViolations: r.validation && r.validation.checks ? r.validation.checks.structural.violations.length : null,
-      contentViolations: r.validation && r.validation.checks ? r.validation.checks.content.violations.length : null,
-      warnings: r.validation ? r.validation.warnings.length : 0
-    })),
+    fixtures: run.rows.map((r) => {
+      const stage = successStage(r);
+      return {
+        id: r.fixture.id,
+        arm: r.arm,
+        skipped: r.skipped || null,
+        stopped: r.stopped || null,
+        errorType: r.error ? (r.error.errorType || null) : null,
+        firstAttemptOk: stage.firstOk,
+        finalOk: stage.finalOk,
+        attempted: stage.attempted,
+        metrics: r.metrics,
+        attempts: r.attempts,
+        ok: r.ok,
+        modelRequested: r.model || null,
+        modelResponse: r.responseModel || null,
+        violations: r.validation ? r.validation.violations.map((v) => v.rule + ' ' + v.where + ' ' + v.detail) : [],
+        structuralViolations: r.validation && r.validation.checks ? r.validation.checks.structural.violations.length : null,
+        contentViolations: r.validation && r.validation.checks ? r.validation.checks.content.violations.length : null,
+        warnings: r.validation ? r.validation.warnings.length : 0
+      };
+    }),
     probes: run.probes,
     selfTests: run.selfTests,
     determinism: run.determinism,
@@ -48,7 +78,9 @@ export function buildScore(run) {
     validationModel: {
       structural: 'V1·V2·V3·V13 — 근거 ID 실재·입력 범위·스키마',
       content: 'V4~V12·V14~V21 — 결정적으로 잡히는 사실·정합성 위반',
-      notVerified: '명리학적 해석의 타당성·품질은 자동 검증이 보증하지 않는다(사람·모델 평가의 몫).'
+      notVerified: '명리학적 해석의 타당성·품질은 자동 검증이 보증하지 않는다(사람·모델 평가의 몫).',
+      selfTests: '검증기 probe·하네스 자기시험·회귀 테스트 통과는 배선·안전장치 검증일 뿐 사주 해석 품질의 증거가 아니다.',
+      successBasis: '성공률·실패율의 모수는 요청 건수(스킵·실패 포함)이고, 품질 지표의 모수는 문서가 나온 응답이다. 둘을 나란히 읽는다.'
     }
   };
 }
@@ -63,7 +95,14 @@ export function writeReport(outDir, run) {
   L.push('- 픽스처: ' + run.set + ' (' + run.fixtureCount + '건 × ' + arms.length + '실험군)');
   L.push('- 모델: ' + (run.model || '—') + ' · temperature 0');
   L.push('- judge: 결정적 근사(heuristic) — 모델 채점 아님');
+  if (run.safety) {
+    L.push('- 안전장치(적용값): 최대 호출 **' + (run.safety.maxCalls ? run.safety.maxCalls + '회' : '상한 없음') + '** · 최초 실험 재시도 **' + run.safety.maxRetries + '회**' +
+      (run.safety.defaulted && run.safety.defaulted.length ? ' (파일럿 기본값 적용: ' + run.safety.defaulted.join(' · ') + ')' : '') +
+      (run.safety.maxCostUsd ? ' · 비용 상한 ' + formatUsd(run.safety.maxCostUsd) : ''));
+  }
   L.push('- **자동 검증의 경계**: 구조·참조 검증(근거 ID 실재·범위)과 결정적 내용 검증(사실 오류·금지 표현·상충)만 한다. **자동 통과는 명리학적 해석 품질을 보증하지 않는다.** 품질은 `blind-myeongri`·`blind-customer` 평가의 몫이다.');
+  L.push('- **자기시험 통과의 뜻**: 아래 자기시험(검증기 probe ' + ((run.probes || []).length) + '건 + 하네스 ' + ((run.selfTests || []).length) + '건 = ' +
+    (((run.probes || []).length) + ((run.selfTests || []).length)) + '건)과 회귀 테스트(122건) 통과는 **배선·검증기·안전장치가 동작한다는 증거**일 뿐, **사주 해석 품질의 증거가 아니다**. 품질은 실호출 응답을 블라인드 3종으로 평가해야 판단된다.');
   L.push('');
   L.push('## 실험군');
   L.push('');
@@ -75,23 +114,46 @@ export function writeReport(outDir, run) {
   L.push('| D | + 지식베이스 35항목 | 검증된 명리 문장을 주면 달라지는가 |');
   L.push('| E | D + D 초안 비평·재작성 | 자기 검토 한 번이 품질을 올리는가 |');
   L.push('');
-  L.push('## 품질 지표');
+  /* 성공률·실패율 — 모수는 요청 건수(스킵·실패 포함). 품질 지표보다 먼저 놓는다. */
+  L.push('## 성공률·실패율 (모수 = 요청 건수)');
   L.push('');
-  L.push('| 실험군 | 섹션(ok/비움) | EA-1 | EA-2 | CA | HZ | GA | SC | CR | GN | GN(구정의) | 구조 위반 | 내용 위반 | KB/문단 | judge | gate |');
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  L.push('| 실험군 | 요청 | 시도 | 미시도(스킵) | 1차 성공 | 1차 성공률 | 재시도로 성공 | 재시도 후 성공률 | 최종 실패 | 최종 실패율 | 품질 평가 모수 |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  arms.forEach((k) => {
+    const m = run.agg[k];
+    if (!m || !m.requestedCount) {
+      L.push('| ' + k + ' | 0 | — | — | — | — | — | — | — | — | — |');
+      return;
+    }
+    L.push('| ' + k + ' | ' + m.requestedCount + ' | ' + m.attemptedCount + ' | ' + m.notAttemptedCount + ' | ' +
+      m.firstAttemptSuccess + ' | ' + pct(m.firstAttemptSuccessRate) + ' | ' + m.retriedSuccess + ' | ' + pct(m.afterRetrySuccessRate) + ' | ' +
+      m.finalFailure + ' | ' + pct(m.finalFailureRate) + ' | ' + m.qualityItems + '/' + m.requestedCount + ' |');
+  });
+  L.push('');
+  L.push('- **1차 성공률** = 재시도 없이 1차 시도에서 파싱·유효성 검사를 모두 통과한 요청 / 요청 건수.');
+  L.push('- **재시도 후 성공률** = 최종적으로 통과한 요청 / 요청 건수(= 1 - 최종 실패율). **최종 실패율** = 끝까지 통과하지 못한 요청 / 요청 건수.');
+  L.push('- 미시도는 E(유효한 D 초안 없음)·예산/호출 상한으로 호출하지 않은 건이다. 미시도도 요청 모수에서 빼지 않고 실패로 센다.');
+  L.push('- **실패한 응답은 지우지 않는다** — 응답이 왔으면 raw output·오류 사유·usage·비용이 `calls/`·`docs.json`·`cost.json`·`score.json` 에 그대로 남고, 아래 「실패·건너뜀 상세」에 모은다.');
+  L.push('');
+  L.push('## 품질 지표 (문서가 나온 응답만 평균 — 성공률·실패율과 항상 함께 본다)');
+  L.push('');
+  L.push('| 실험군 | 품질 모수 | 섹션(ok/비움) | EA-1 | EA-2 | CA | HZ | GA | SC | CR | GN | GN(구정의) | 구조 위반 | 내용 위반 | KB/문단 | judge | gate |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   arms.forEach((k) => {
     const m = run.agg[k];
     if (!m || !m.items) {
-      L.push('| ' + k + ' | 실행 없음(예산·호출 상한) | — | — | — | — | — | — | — | — | — | — | — | — | — | — |');
+      L.push('| ' + k + ' | 0/' + ((m && m.requestedCount) || 0) + ' | 실행 없음(모든 요청 실패·스킵) | — | — | — | — | — | — | — | — | — | — | — | — | — |');
       return;
     }
     const g = gateOf(m);
-    L.push('| ' + k + ' | ' + (m.sectionsOk || 0).toFixed(1) + ' / ' + (m.sectionsUnavailable || 0).toFixed(1) + ' | ' +
+    L.push('| ' + k + ' | ' + m.qualityItems + '/' + m.requestedCount + ' | ' + (m.sectionsOk || 0).toFixed(1) + ' / ' + (m.sectionsUnavailable || 0).toFixed(1) + ' | ' +
       pct(m.ea1) + ' | ' + pct(m.ea2) + ' | ' + (m.caHit + '/' + m.caTotal) + ' (' + pct(m.ca) + ') | ' +
       m.hz + ' | ' + m.ga + ' | ' + m.sc + ' | ' + pct(m.cr) + ' | ' + pct(m.gn) + ' | ' + pct(m.gnChartOnly) + ' | ' +
       (m.referenceViolations || 0) + ' | ' + (m.contentViolations || 0) + ' | ' + (m.kb || 0).toFixed(2) + ' | ' + num(m.judge) + ' | ' +
       (g.pass ? 'PASS' : 'FAIL — ' + g.fails.join(', ') + (GATE_EXEMPT[k] ? ' (설계상 예상)' : '')) + ' |');
   });
+  L.push('');
+  L.push('- 품질 모수가 요청 건수보다 작으면, 그 차이만큼은 품질 평균에 들어가지 않았다. 성공률·실패율과 함께 읽어야 한다 — **품질 우위는 실패를 뺀 표본만으로 판단하지 않는다.**');
   L.push('');
   L.push('지표 정의: EA-1 인용 유효율 · EA-2 문단 근거율 · CA 상충 설명률(양쪽 인용+조건) · HZ 간지·십성·합충 환각 · GA 금지 판정어·단정·민감 · SC 스키마 · CR 사실 모순률 · GN 일반론률(개인 사실 미인용) · GN(구정의) chart.* 만 인용한 문단 비율(참고값, 게이트 미적용) · 구조/내용 위반 = V1·V2·V3·V13 / 그 밖의 규칙 · KB/문단 지식베이스 인용 밀도');
   L.push('');
@@ -108,8 +170,9 @@ export function writeReport(outDir, run) {
   L.push('## 실험군별 해석');
   arms.forEach((k) => {
     const m = run.agg[k];
-    if (!m || !m.items) { L.push('- **' + k + '**: 실행 없음(예산·호출 상한)'); return; }
+    if (!m || !m.requestedCount) { L.push('- **' + k + '**: 실행 없음(예산·호출 상한)'); return; }
     const bits = [];
+    bits.push('요청 ' + m.requestedCount + '건 · 1차 성공 ' + m.firstAttemptSuccess + '건(' + pct(m.firstAttemptSuccessRate) + ') · 최종 실패 ' + m.finalFailure + '건(' + pct(m.finalFailureRate) + ')');
     bits.push('섹션 ' + (m.sectionsOk || 0).toFixed(1) + '개 작성');
     if (m.caTotal) bits.push('상충 의무 ' + m.caTotal + '건 중 ' + m.caHit + '건 충족');
     else bits.push('상충 의무 없음(또는 근거 없음)');
@@ -164,6 +227,7 @@ export function writeReport(outDir, run) {
   L.push('- 합계 ' + (run.costSummary.totalUsd === null ? '미상(' + run.costSummary.unknownPricingCalls + '건 단가 미등록) · 계산된 것만 ' + formatUsd(run.costSummary.totalUsdKnown) : formatUsd(run.costSummary.totalUsd) + ' (' + formatKrw(run.costSummary.totalKrw) + ')') +
     (run.costSummary.estimated ? ' — **stub 추정치**(글자 수 기반). 청구액이 아니다.' : ' — 실호출 usage 기준'));
   L.push('- 단가 미등록 모델은 0원으로 합산하지 않는다(리뷰 P0-3-3). `pricingKnown:false` · `costStatus:"unknown_pricing"` 로 기록된다.');
+  L.push('- ' + COST_ESTIMATE_DISCLAIMER);
   L.push('');
 
   /* 비교쌍 */
@@ -250,13 +314,29 @@ export function writeReport(outDir, run) {
     L.push('- ' + k + ': ' + (list.length ? list.map((x) => x.id + '(' + x.n + ')').join(', ') : '위반·경고 0'));
   });
   L.push('');
-  L.push('## 건너뜀·실패');
-  const skippedRows = run.rows.filter((r) => r.skipped || r.stopped || r.error);
-  if (!skippedRows.length) L.push('- 없음');
-  skippedRows.slice(0, 24).forEach((r) => {
-    L.push('- ' + r.fixture.id + ' ' + r.arm + ' — ' + (r.skipped || r.stopped || (r.error && r.error.errorType) || '실패') +
-      (r.budgetBlocked ? ' (예상 ' + formatUsd(r.budgetBlocked.usd) + ' · ' + r.budgetBlocked.reason + ')' : ''));
-  });
+  L.push('## 실패·건너뜀 상세 (삭제하지 않고 보존)');
+  const skippedRows = run.rows.filter((r) => r.skipped || r.stopped || r.error || r.ok === false);
+  if (!skippedRows.length) L.push('- 없음 — 모든 요청이 최종 통과했다.');
+  if (skippedRows.length) {
+    L.push('');
+    L.push('| 픽스처 | 실험군 | 사유 | 시도 | 입력/출력 토큰 | 비용 | raw output | 호출 파일 |');
+    L.push('|---|---|---|---|---|---|---|---|');
+    skippedRows.slice(0, 40).forEach((r) => {
+      const recs = (r.records || []).filter((x) => x.phase !== 'blocked');
+      const inTok = recs.reduce((s, x) => s + ((x.usage && x.usage.input_tokens) || 0), 0);
+      const outTok = recs.reduce((s, x) => s + ((x.usage && x.usage.output_tokens) || 0), 0);
+      const known = recs.filter((x) => x.pricingKnown && x.usd !== null && x.usd !== undefined);
+      const unknown = recs.some((x) => !x.pricingKnown);
+      const usd = unknown ? null : known.reduce((s, x) => s + x.usd, 0);
+      const reason = r.skipped || r.stopped || (r.error && (r.error.errorType || r.error.message)) || '검증 미통과';
+      const raw = r.doc ? 'docs.json (문서 전문)' : (recs.length && recs.some((x) => x.errorType) ? 'calls/*.json (rawText 전문)' : (recs.length ? 'calls/*.json (응답 기록)' : '— (호출 전 스킵)'));
+      const callFiles = recs.length ? recs.map((x) => x.promptFile || null).filter(Boolean).slice(0, 1).join('') || ('calls/' + r.fixture.id + '-' + r.arm + '-a1.json') : '호출 없음';
+      L.push('| ' + r.fixture.id + ' | ' + r.arm + ' | ' + reason + ' | ' + (r.attempts || 0) + ' | ' + (recs.length ? inTok + '/' + outTok : '—') + ' | ' +
+        (recs.length ? (usd === null ? '미상(단가 미등록)' : formatUsd(usd)) : '—') + ' | ' + raw + ' | ' + callFiles + ' |');
+    });
+    L.push('');
+    L.push('- 검증에 실패한 응답도 문서는 `docs.json` 에, 호출별 원문·오류·usage·비용은 `calls/<픽스처>-<실험군>-a<시도>.json` 과 `cost.json` 에 그대로 남는다. 실패를 지우고 성공만 모아 품질을 판단하지 않는다.');
+  }
   if (run.budget && run.budget.exceeded) {
     L.push('- 예산/호출 상한: ' + run.budget.exceeded + (run.budget.exceededDetail ? ' — ' + run.budget.exceededDetail : ''));
   }
@@ -302,6 +382,8 @@ export function writeReport(outDir, run) {
   L.push('- 간지 환각 검사(V4)는 한자 쌍만 본다. 한글 표기(예: "갑자")의 오류는 별도 규칙이 필요하다.');
   L.push('- V16(근거-내용 불일치)·V19(원국/대운 혼동)는 보수적 휴리스틱이다. 탐지하지 못하는 무관 서술이 남을 수 있다.');
   L.push('- 토큰·비용은 stub 에서 추정치다(글자 수/2.2). 실호출에서 usage 로 대체된다.');
+  L.push('- ' + COST_ESTIMATE_DISCLAIMER);
+  L.push('- 자기시험·회귀 테스트 통과는 배선·검증기·안전장치 검증일 뿐, 사주 해석 품질의 증거가 아니다.');
 
   const md = L.join('\n');
   writeFileSync(resolve(outDir, 'report.md'), md, 'utf8');

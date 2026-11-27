@@ -23,7 +23,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SECTIONS, flattenSections } from './schema.mjs';
-import { formatUsd, formatKrw } from './cost.mjs';
+import { formatUsd, formatKrw, COST_ESTIMATE_DISCLAIMER } from './cost.mjs';
 import { getEntry } from './knowledge-base.mjs';
 import { GROUP_KO, PILLAR_KO } from './facts.mjs';
 
@@ -153,6 +153,7 @@ function statsOf(item) {
   const knownRecords = records.filter((r) => r.pricingKnown && r.usd !== null && r.usd !== undefined);
   const usd = knownRecords.reduce((s, r) => s + r.usd, 0);
   const unknownPricing = records.some((r) => !r.pricingKnown);
+  const attempts = item.attempts || records.length;
   return {
     noCalls,
     tokens: { input: tokensIn, output: tokensOut, estimated: records.some((r) => r.estimated) },
@@ -160,8 +161,10 @@ function statsOf(item) {
     costKrw: unknownPricing ? null : Math.round(usd * 1390),
     costStatus: unknownPricing ? 'unknown_pricing' : 'priced',
     latencyMs: records.reduce((s, r) => s + (r.ms || 0), 0),
-    attempts: item.attempts || records.length,
-    retries: Math.max(0, (item.attempts || records.length) - 1),
+    attempts,
+    retries: Math.max(0, attempts - 1),
+    firstAttemptOk: item.ok === true && attempts <= 1,
+    finalOk: item.ok === true,
     truncated: records.some((r) => r.truncated),
     errors: records.filter((r) => r.errorType).map((r) => r.errorType)
   };
@@ -252,6 +255,7 @@ function renderMyeongriMd(pkg) {
 
 function renderTechMd(pkg) {
   const L = [];
+  const pct = (n) => (n === null || n === undefined ? '—' : (n * 100).toFixed(1) + '%');
   L.push('# 기술 평가용 — 실험군·모델·비용·지연·검증');
   L.push('');
   L.push('> 이 파일에는 실험군 이름과 모델명이 들어 있다. 고객·명리 평가에는 주지 않는다.');
@@ -265,17 +269,68 @@ function renderTechMd(pkg) {
       (a.promptVersion || '—') + ' `' + (a.promptHash || '') + '` | ' + (a.inputBoundary || '—') + ' |');
   });
   L.push('');
+  L.push('## 성공률·실패율 (모수 = 요청 건수 — 실패·스킵을 빼지 않는다)');
+  L.push('');
+  L.push('| 실험군 | 요청 | 시도 | 미시도(스킵) | 1차 성공 | 1차 성공률 | 재시도로 성공 | 재시도 후 성공률 | 최종 실패 | 최종 실패율 | 품질 평가 모수 |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  Object.keys(pkg.successByArm || {}).forEach((k) => {
+    const m = pkg.successByArm[k] || {};
+    if (!m.requestedCount) { L.push('| ' + k + ' | 0 | — | — | — | — | — | — | — | — | — |'); return; }
+    L.push('| ' + k + ' | ' + m.requestedCount + ' | ' + m.attemptedCount + ' | ' + m.notAttemptedCount + ' | ' +
+      m.firstAttemptSuccess + ' | ' + pct(m.firstAttemptSuccessRate) + ' | ' + m.retriedSuccess + ' | ' + pct(m.afterRetrySuccessRate) + ' | ' +
+      m.finalFailure + ' | ' + pct(m.finalFailureRate) + ' | ' + m.qualityItems + '/' + m.requestedCount + ' |');
+  });
+  L.push('');
+  L.push('- 1차 성공률 = 재시도 없이 1차에서 통과 / 요청. 재시도 후 성공률 = 최종 통과 / 요청. 최종 실패율은 그 보수(1 - 재시도 후 성공률).');
+  L.push('- 품질 지표(아래 실행 기록의 구조·내용 위반 등)는 문서가 나온 응답만 골라 계산된다. 실패율과 나란히 읽어야 한다.');
+  L.push('');
   L.push('## 실행 기록');
   L.push('');
-  L.push('| 사례 | 실험군 | 응답 ID | 토큰 입/출 | 비용 | 지연 | 시도 | 잘림 | 오류 | 구조 위반 | 내용 위반 |');
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  L.push('| 사례 | 실험군 | 응답 ID | 토큰 입/출 | 비용 | 지연 | 시도 | 1차/최종 | 잘림 | 오류 | 구조 위반 | 내용 위반 |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
   pkg.rows.forEach((r) => {
     L.push('| ' + r.case + ' | ' + r.arm + ' | ' + r.id + ' | ' + (r.noCalls ? '— (모델 호출 없음)' : r.tokens.input + '/' + r.tokens.output + (r.tokens.estimated ? '(추정)' : '')) +
       ' | ' + (r.noCalls ? '—' : (r.costStatus === 'unknown_pricing' ? '미상(단가 미등록)' : formatUsd(r.costUsd) + ' (' + formatKrw(r.costKrw) + ')')) +
-      ' | ' + r.latencyMs + 'ms | ' + r.attempts + ' | ' + (r.truncated ? '예' : '아니오') + ' | ' +
+      ' | ' + r.latencyMs + 'ms | ' + r.attempts + ' | ' + (r.firstAttemptOk ? '1차 통과' : (r.finalOk ? '재시도 후 통과' : '최종 실패')) + ' | ' +
+      (r.truncated ? '예' : '아니오') + ' | ' +
       (r.errors && r.errors.length ? r.errors.join(',') : '—') + ' | ' + (r.structuralViolations == null ? '—' : r.structuralViolations) +
       ' | ' + (r.contentViolations == null ? '—' : r.contentViolations) + ' |');
   });
+  L.push('');
+  L.push('## 실패한 응답 (삭제하지 않고 보존)');
+  L.push('');
+  const failures = pkg.failures || [];
+  if (!failures.length) {
+    L.push('- 없음 — 모든 요청이 최종 통과했다.');
+  } else {
+    L.push('| 사례 | 실험군 | 사유 | 시도 | 응답 문서 | 토큰 입/출 | 비용 | 오류·상태 | 호출 파일 |');
+    L.push('|---|---|---|---|---|---|---|---|---|');
+    failures.forEach((f) => {
+      const recs = f.records || [];
+      const inTok = recs.reduce((s, x) => s + ((x.usage && x.usage.input_tokens) || 0), 0);
+      const outTok = recs.reduce((s, x) => s + ((x.usage && x.usage.output_tokens) || 0), 0);
+      const unknown = recs.some((x) => !x.pricingKnown);
+      const known = recs.filter((x) => x.pricingKnown && x.usd !== null && x.usd !== undefined);
+      const usd = unknown ? null : known.reduce((s, x) => s + x.usd, 0);
+      const reason = f.skipped || f.stopped || (f.error && (f.error.errorType || f.error.message)) || '검증 미통과';
+      const errBits = recs.map((x) => [x.errorType, x.httpStatus ? 'HTTP ' + x.httpStatus : null, x.stopReason].filter(Boolean).join(' ')).filter(Boolean).join(' · ') || '—';
+      L.push('| ' + f.fixture + ' | ' + f.arm + ' | ' + reason + ' | ' + (f.attempts || 0) + ' | ' +
+        (f.hasDoc ? '있음(docs.json)' : (recs.length ? '없음(calls/*.json rawText)' : '— (호출 전 스킵)')) + ' | ' + (recs.length ? inTok + '/' + outTok : '—') + ' | ' +
+        (recs.length ? (usd === null ? '미상(단가 미등록)' : formatUsd(usd)) : '—') + ' | ' + errBits + ' | ' +
+        (recs.length ? (recs[recs.length - 1].promptFile || 'calls/') : '호출 전 스킵') + ' |');
+    });
+  }
+  L.push('');
+  L.push('## 안전장치 (적용값)');
+  L.push('');
+  if (pkg.safety) {
+    L.push('- 최대 호출: ' + (pkg.safety.maxCalls || '상한 없음') + '회 · 재시도: ' + pkg.safety.maxRetries + '회' +
+      (pkg.safety.defaulted && pkg.safety.defaulted.length ? ' (파일럿 기본값 적용: ' + pkg.safety.defaulted.join(' · ') + ')' : '') +
+      (pkg.safety.maxCostUsd ? ' · 비용 상한 ' + formatUsd(pkg.safety.maxCostUsd) : ''));
+    if (pkg.safety.plannedCallRule) L.push('- 계획: ' + pkg.safety.plannedCallRule);
+  } else {
+    L.push('- 기록 없음');
+  }
   L.push('');
   L.push('## 비용 합계');
   L.push('');
@@ -285,10 +340,12 @@ function renderTechMd(pkg) {
     L.push('- 호출 전 최대 예상 비용(추정): ' + (pkg.preflight.usd == null ? '계산 불가(단가 미등록)' : formatUsd(pkg.preflight.usd)) +
       ' · 예산 상한: ' + (pkg.preflight.maxUsd ? formatUsd(pkg.preflight.maxUsd) : '없음'));
   }
+  L.push('- ' + COST_ESTIMATE_DISCLAIMER);
   L.push('');
   L.push('## 정직한 한계');
   L.push('- 자동 검증은 근거 ID의 실재·범위와 결정적으로 잡히는 사실 오류만 본다.');
   L.push('- 구조·내용 검증을 통과해도 명리학적 해석 품질을 보증하지 않는다.');
+  L.push('- 검증기 probe·하네스 자기시험 통과는 배선·안전장치 검증일 뿐, 사주 해석 품질의 증거가 아니다.');
   return L.join('\n');
 }
 
@@ -393,12 +450,16 @@ export function buildBlind(input) {
 
   /* 3) 기술 평가용 */
   const tech = {
-    version: 'tech-eval/1.0',
+    version: 'tech-eval/1.1',
     runId: input.runId,
     createdAt: input.createdAt,
     arms: arms.map((arm) => Object.assign({ arm }, key.arms[arm])),
+    /* 성공률·실패율은 요청 건수 모수 — 실패·스킵을 빼지 않는다 */
+    successByArm: input.successByArm || {},
+    safety: input.safety || null,
     preflight: input.preflight || null,
     cost: input.cost || { totalUsdKnown: 0, unknownPricingCalls: 0 },
+    costDisclaimer: COST_ESTIMATE_DISCLAIMER,
     rows: [].concat.apply([], cases.map((c) => c.responses.map((r) => {
       const v = r.it.validation;
       const checks = v && v.checks ? v.checks : null;
@@ -413,9 +474,13 @@ export function buildBlind(input) {
         ok: r.it.ok
       }, r.stats);
     }))),
+    /* 실패한 요청도 삭제하지 않는다 — 문서가 없어도 오류·usage·비용을 남긴다 */
+    failures: input.failures || [],
     notes: [
       '자동 검증은 근거 ID의 실재·범위와 결정적으로 잡히는 사실 오류만 본다. 해석 품질을 보증하지 않는다.',
-      '단가 미등록 모델의 비용은 0원이 아니라 미상(null)으로 기록된다.'
+      '단가 미등록 모델의 비용은 0원이 아니라 미상(null)으로 기록된다.',
+      '성공률·실패율의 모수는 요청 건수다. 품질 지표는 문서가 나온 응답만 평균하므로 둘을 나란히 읽어야 한다.',
+      COST_ESTIMATE_DISCLAIMER
     ]
   };
 

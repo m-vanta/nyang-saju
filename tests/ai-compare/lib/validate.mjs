@@ -352,8 +352,8 @@ export function validate(doc, ctx, opts) {
          그대로 읽어 주지 않으므로 V16 대상에서 뺀다 — 규칙 기반과 AI 를 같은 자로 재기 위해. */
       const validRefs = p.refs.all.filter((r) => pool.has(r) && /^(analysis\.|chart\.|period\.)/.test(r));
       if (!validRefs.length) return;
-      /* 근거를 4개 이상 붙인 문단은 하나라도 이어질 가능성이 높아 보수적으로 통과시킨다 */
-      if (validRefs.length >= 4) return;
+      /* 근거 개수로 예외를 두지 않는다 — 4개 이상 붙인 문단도 같은 기준으로 검사한다.
+         근거를 많이 붙이는 것이 내용이 그 근거와 이어진다는 뜻은 아니기 때문이다. */
       const tokens = new Set();
       validRefs.forEach((r) => {
         const entry = pool.get(r);

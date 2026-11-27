@@ -34,7 +34,8 @@ node tests/ai-compare/run.mjs --mode stub
 node tests/ai-compare/run.mjs --mode stub --set pilot
 
 # 실호출 — 파일럿 3건 / 전체 12건 (ANTHROPIC_API_KEY 필요)
-node tests/ai-compare/run.mjs --mode pilot --max-calls 30 --max-cost-usd 5
+# pilot 기본값: 최대 12회 호출 · 재시도 0회 (QA02·QA04·QA09 × B·C·D·E = 12회, A 는 API 0회)
+node tests/ai-compare/run.mjs --mode pilot --max-cost-usd 5
 node tests/ai-compare/run.mjs --mode full --max-cost-usd 20
 
 # 실호출 배선을 스텁으로 예행
@@ -47,13 +48,13 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 | 옵션 | 뜻 |
 |---|---|
 | `--mode stub` | 결정적 오프라인 응답. 네트워크·키 없음 |
-| `--mode pilot` | 파일럿 3건 실호출 |
+| `--mode pilot` | 파일럿 3건 실호출. `--max-calls`·`--max-retries` 를 명시하지 않으면 **12회·0회** 를 적용한다 |
 | `--mode full` | QA01~12 실호출 (**비교쌍 3종 필수**) |
 | `--set pilot\|all` | 픽스처 부분집합 |
 | `--fixtures <path>` | 다른 픽스처 파일(`profiles` 또는 `charts` 배열) |
 | `--arms A,B,C,D,E` | 일부 실험군 |
 | `--max-calls N` | 모델 호출 총 횟수 상한(재시도 포함) |
-| `--max-retries N` | 검증 실패 재시도 횟수(기본 1) |
+| `--max-retries N` | 검증 실패 재시도 횟수(기본 1 · **pilot 기본 0**) |
 | `--max-cost-usd X` | 누적 비용 상한. **실행 전 최대 예상 비용**과 **호출 직전 시도별 예상 비용**으로 검사해 넘으면 호출하지 않는다 |
 | `--model <id>` | 기본 `claude-opus-5-5` (실제 API 호출까지 전달) |
 | `--out <dir>` | 산출물 경로(기본 `out/<runId>`) |
@@ -65,6 +66,11 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 
 | 지표 | 정의 | 계산 | gate |
 |---|---|---|---|
+| **요청 건수** | 그 실험군에 요청한 건수(스킵·실패 포함) | 계측 | — |
+| **1차 성공률** | 재시도 없이 1차에서 파싱+유효성 통과 / 요청 건수 | 결정적 | — |
+| **재시도 후 성공률** | 최종 통과 / 요청 건수 | 결정적 | — |
+| **최종 실패율** | 1 − 재시도 후 성공률 | 결정적 | 0 |
+| **품질 평가 모수** | 문서가 나온 응답 / 요청 건수 | 계측 | 요청과 같아야 함 |
 | EA-1 인용 유효율 | 유효 근거 / 전체 근거 | 결정적 | 100% |
 | EA-2 문단 근거율 | 근거 ≥1 문단 / 전체 문단 | 결정적 | 100% |
 | CA 상충 설명률 | 상충 의무를 **한 문단에서** 양쪽 인용 + 조건까지 설명 | 결정적 | ≥90% |
@@ -81,6 +87,15 @@ node tests/ai-compare/run.mjs --mode stub --arms A,C,D
 
 `judge` 는 `--mode stub` 에서 **결정적 근사**다(모델 채점이 아니다). 같은 루브릭(§7.6)을
 근거·개인화·상충·위반으로 근사하고 리포트에 그 사실을 명시한다.
+
+**성공률·실패율의 모수는 요청 건수다.** 실패·스킵을 빼고 품질을 재면 "잘 쓴 것만 남은 평균"이 되어
+우열이 뒤집힌다. 그래서 리포트·`score.json`·`tech-eval` 에 `requestedCount` · `firstAttemptSuccessRate` ·
+`afterRetrySuccessRate` · `finalFailureRate` 를 실험군별로 따로 내고 품질 지표와 나란히 놓는다.
+품질 지표의 모수(문서가 나온 응답 수)도 항상 같이 적는다. 실패한 응답의 raw output·오류 사유·
+usage·비용은 삭제하지 않고 `calls/` · `docs.json` · `cost.json` · `score.json` · `tech-eval` 에 보존한다.
+
+> **API 비용 추정치는 사전 추정치일 뿐 절대적인 과금 상한이 아니며, 실제 과금은 API 제공자의 청구 기준을 따릅니다.**
+> `report.md`·`cost.json`(`disclaimer`)·CLI 출력·`tech-eval` 에 같이 적힌다.
 
 ## 상충 의무 (O1~O6)
 
@@ -133,7 +148,7 @@ KB 누락 · 상충 한쪽만 · **상충 문단 분리** · **무관 근거** �
 |---|---|---|
 | `blind-customer.md` / `.json` | 고객 평가자 | 해석 전문만. 실험군·비용·자동 점수·근거 ID·모델명·명식 숨김 |
 | `blind-myeongri.md` / `.json` | 명리 검토자 | 명식·해석 전문 + 근거 사실 값 + 규칙/KB 출처 |
-| `tech-eval.md` / `.json` | 기술 평가자 | 실험군·요청/응답 모델·토큰·비용·지연·재시도·실패·검증 |
+| `tech-eval.md` / `.json` | 기술 평가자 | 실험군·요청/응답 모델·토큰·비용·지연·재시도·실패·검증 + 요청 건수 모수 성공률·실패율 + 실패 응답 기록 |
 | `blind-key.json` | **비밀** | 표시 id ↔ 실험군 대응표(사례별 순서)·모델·프롬프트 해시·설정 |
 | `prompts.md` | **비밀** | 시스템/사용자 프롬프트 전문 |
 | `critique.md` | **비밀** | E 의 비평 기록 |
@@ -184,9 +199,11 @@ fixtures/charts.json        확장 픽스처(QA01~12 + T01~04 + C1~C8, O1 포함
 ## 한계
 
 - `stub` 은 문장 품질을 재지 않는다. 배선·검증기·채점·비용 경로만 검증한다.
+- **자기시험(검증기 probe + 하네스)과 회귀 122건 통과는 배선·안전장치 검증일 뿐, 사주 해석 품질의 증거가 아니다.**
+  품질은 실호출 응답을 블라인드 3종으로 평가해야 판단된다.
 - `judge` 는 결정적 근사다. 모델·사람 채점과의 상관은 실호출 라운드에서 확인해야 한다.
 - V4(간지 환각)는 한자 쌍만 본다. 한글 표기 오류는 별도 규칙이 필요하다.
 - E 의 "초안에 없는 사실 추가" 검사가 없다.
-- V16·V19 는 보수적 휴리스틱이다.
+- V16·V19 는 보수적 휴리스틱이다. V16 은 근거 개수와 무관하게 검사한다(예전의 근거 4개 이상 예외는 제거).
 - 토큰·비용은 stub 에서 추정치다(글자 수/2.2). 실호출에서 `usage` 로 대체된다.
 - O1 은 QA01~12 에서 발동하지 않는다 — `--fixtures fixtures/charts.json` 의 C1 로 확인.

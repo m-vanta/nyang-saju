@@ -120,32 +120,79 @@ function avg(list, fn) {
   return list.reduce((s, x) => s + fn(x), 0) / list.length;
 }
 
+/* 요청 1건의 성공 단계 — '요청 건수'를 모수로 센다(리뷰: 실패를 빼고 품질을 재지 않는다).
+     attempted  실제로 1차 호출(또는 A 의 로컬 실행)이 있었는가
+     firstOk    1차 시도에서 재시도 없이 파싱+유효성까지 통과했는가
+     finalOk    최종적으로 통과했는가(재시도 포함)
+   건너뜀(E 는 유효한 D 초안 없음, 예산·호출 상한)은 시도 없음으로 센다. */
+export function successStage(row) {
+  const r = row || {};
+  const attempts = r.attempts || 0;
+  const isRuleArm = r.arm === 'A';
+  const attempted = isRuleArm ? !!r.doc : (attempts > 0 || (r.records || []).some((x) => x.phase !== 'blocked'));
+  const finalOk = r.ok === true;
+  const firstOk = finalOk && attempts <= 1;
+  return {
+    attempted,
+    notAttempted: !attempted,
+    firstOk,
+    finalOk,
+    retried: finalOk && attempts > 1,
+    skippedReason: r.skipped || (r.stopped && !attempted ? r.stopped : null) || null
+  };
+}
+
 export function aggregate(rows) {
-  const withCa = rows.filter((r) => r.metrics && r.metrics.ca !== null);
+  const list = rows || [];
+  const stages = list.map(successStage);
+  const requested = list.length;
+  const attempted = stages.filter((s) => s.attempted).length;
+  const firstOk = stages.filter((s) => s.firstOk).length;
+  const finalOk = stages.filter((s) => s.finalOk).length;
+  const retriedSuccess = finalOk - firstOk;
+  const finalFailure = requested - finalOk;
+  const scored = list.filter((r) => r.metrics);
+  const withCa = scored.filter((r) => r.metrics.ca !== null);
   const caHit = withCa.reduce((s, r) => s + r.metrics.caHit, 0);
   const caTotal = withCa.reduce((s, r) => s + r.metrics.caTotal, 0);
   return {
-    items: rows.length,
-    ea1: avg(rows, (r) => r.metrics.ea1),
-    ea2: avg(rows, (r) => r.metrics.ea2),
+    /* 요청 건수 모수 — 실패를 제외하지 않는다 */
+    requestedCount: requested,
+    attemptedCount: attempted,
+    notAttemptedCount: requested - attempted,
+    firstAttemptSuccess: firstOk,
+    firstAttemptSuccessRate: requested ? firstOk / requested : null,
+    retriedSuccess,
+    finalSuccess: finalOk,
+    afterRetrySuccessRate: requested ? finalOk / requested : null,
+    finalFailure,
+    finalFailureRate: requested ? finalFailure / requested : null,
+    /* 품질 지표 모수 — 문서가 나온 응답만 평균낸다(실패율과 함께 읽어야 한다) */
+    qualityItems: scored.length,
+    qualityExcluded: requested - scored.length,
+    qualityCoverage: requested ? scored.length / requested : null,
+    items: scored.length,
+    /* 품질 지표 — 문서가 나온 응답(성공·실패 모두)만 평균낸다 */
+    ea1: avg(scored, (r) => r.metrics.ea1),
+    ea2: avg(scored, (r) => r.metrics.ea2),
     ca: caTotal ? caHit / caTotal : null,
     caHit, caTotal,
-    hz: rows.reduce((s, r) => s + r.metrics.hz, 0),
-    ga: rows.reduce((s, r) => s + r.metrics.ga, 0),
-    sc: rows.reduce((s, r) => s + r.metrics.sc, 0),
-    cr: avg(rows, (r) => r.metrics.cr),
-    gn: avg(rows, (r) => r.metrics.gn),
-    gnChartOnly: avg(rows, (r) => r.metrics.gnChartOnly),
-    kb: avg(rows, (r) => r.metrics.kb || 0),
-    judge: avg(rows, (r) => r.metrics.judge),
-    violations: rows.reduce((s, r) => s + r.metrics.violations, 0),
-    warnings: rows.reduce((s, r) => s + r.metrics.warnings, 0),
-    referenceViolations: rows.reduce((s, r) => s + (r.metrics.referenceViolations || 0), 0),
-    contentViolations: rows.reduce((s, r) => s + (r.metrics.contentViolations || 0), 0),
-    sectionsOk: avg(rows, (r) => r.metrics.sectionsOk),
-    sectionsUnavailable: avg(rows, (r) => r.metrics.sectionsUnavailable),
-    attempts: rows.reduce((s, r) => s + (r.attempts || 0), 0),
-    failed: rows.filter((r) => r.ok === false).length,
-    skipped: rows.filter((r) => r.skipped).length
+    hz: scored.reduce((s, r) => s + r.metrics.hz, 0),
+    ga: scored.reduce((s, r) => s + r.metrics.ga, 0),
+    sc: scored.reduce((s, r) => s + r.metrics.sc, 0),
+    cr: avg(scored, (r) => r.metrics.cr),
+    gn: avg(scored, (r) => r.metrics.gn),
+    gnChartOnly: avg(scored, (r) => r.metrics.gnChartOnly),
+    kb: avg(scored, (r) => r.metrics.kb || 0),
+    judge: avg(scored, (r) => r.metrics.judge),
+    violations: scored.reduce((s, r) => s + r.metrics.violations, 0),
+    warnings: scored.reduce((s, r) => s + r.metrics.warnings, 0),
+    referenceViolations: scored.reduce((s, r) => s + (r.metrics.referenceViolations || 0), 0),
+    contentViolations: scored.reduce((s, r) => s + (r.metrics.contentViolations || 0), 0),
+    sectionsOk: avg(scored, (r) => r.metrics.sectionsOk),
+    sectionsUnavailable: avg(scored, (r) => r.metrics.sectionsUnavailable),
+    attempts: list.reduce((s, r) => s + (r.attempts || 0), 0),
+    failed: list.filter((r) => r.ok === false).length,
+    skipped: list.filter((r) => r.skipped).length
   };
 }

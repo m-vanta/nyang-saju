@@ -31,6 +31,16 @@ export const PRICING = {
 
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 
+/*
+   비용 고지 — 추정치는 상한이 아니다.
+   단가표·환율·토큰 추정은 어느 것도 청구를 보장하지 않는다. 프롬프트 캐시·재시도·
+   출력 길이·프로바이더 정책·환율 변동에 따라 실제 청구액이 달라지고, 실행 전 예상
+   비용(--max-cost-usd 가드)도 '이 선을 넘지 않는다'는 약속이 아니라 도구 쪽 계산일 뿐이다.
+   이 문장은 리포트·cost.json·CLI 출력·문서에 같이 적는다.
+*/
+export const COST_ESTIMATE_DISCLAIMER =
+  'API 비용 추정치는 사전 추정치일 뿐 절대적인 과금 상한이 아니며, 실제 과금은 API 제공자의 청구 기준을 따릅니다.';
+
 /* 비용 상태 값 — 리포트·산출물이 이 문자열을 그대로 쓴다. */
 export const COST_STATUS = {
   PRICED: 'priced',                 // 단가표에 있고 계산됨
